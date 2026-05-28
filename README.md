@@ -1,4 +1,4 @@
-# Times Prime SEO Agent
+# AI-powered SEO Agent
 
 An AI-powered SEO content agent that discovers high-value keywords 
 from live Google search data, scores them by business intent, and 
