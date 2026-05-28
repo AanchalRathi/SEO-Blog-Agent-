@@ -24,7 +24,8 @@ built-in quality evaluation.
 4. python agent.py
 
 ## Sample output
-[paste screenshot or link to sample_output/sample_blog.txt]
+<img width="1233" height="900" alt="image" src="https://github.com/user-attachments/assets/70e338fc-9e1c-4cb8-863b-64d7fb69266a" />
+
 
 ## Why this matters
 Businesses spend huge time and money researching keywords, planning content, and writing SEO blogs manually. This agent automates the entire workflow — from keyword discovery to content generation — helping teams scale organic traffic faster while reducing content production cost and effort.
