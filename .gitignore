@@ -2,4 +2,4 @@
 venv/
 __pycache__/
 *.pyc
-output_blog.txt
+/output

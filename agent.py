@@ -1,3 +1,5 @@
+
+import os
 from rich.console import Console
 from rich.table import Table
 from rich.panel import Panel
@@ -10,30 +12,53 @@ from blog_generator import generate_blog
 console = Console()
 
 def run():
+
+    os.makedirs("output", exist_ok=True)
+
     console.print(Panel.fit(
         "[bold magenta] Times Prime SEO Agent[/bold magenta]\n"
         "[dim]Keyword Discovery  →  Scoring  →  Blog Generation[/dim]",
         border_style="magenta"
     ))
 
-    # phase 1
-    console.print(Rule("[bold cyan]Phase 1 — Keyword Discovery[/bold cyan]"))
-    console.print("[dim]Scraping Google autocomplete + Serper related searches...[/dim]\n")
+    # ── MODE SELECTION ────────────────────────────────────────
+    console.print("\n[bold cyan]Choose mode:[/bold cyan]")
+    console.print("  [green]1[/green] → Type a search query  (like Google)")
+    console.print("  [green]2[/green] → Auto run on default seeds\n")
 
-    raw = discover_all_keywords()# returns a list of dicts and stores it in raw
+    mode = input("Enter 1 or 2: ").strip()
+
+    if mode == "1":
+        console.print("\n[dim]Examples: 'zomato gold coupon'  |  'hotstar offer india'  |  'times prime vs amazon'[/dim]")
+        user_query = input("🔍 Your search: ").strip()
+
+        if not user_query:
+            console.print("[yellow]No input — running on default seeds.[/yellow]\n")
+            from keyword_discovery import discover_all_keywords
+            raw = discover_all_keywords()
+        else:
+            from keyword_discovery import discover_from_input
+            console.print(f"\n[green]Running for:[/green] [white]{user_query}[/white]\n")
+            raw = discover_from_input(user_query)
+    else:
+        from keyword_discovery import discover_all_keywords
+        raw = discover_all_keywords()
+
+    # ── PHASE 1 ───────────────────────────────────────────────
+    console.print(Rule("[bold cyan]Phase 1 — Keyword Discovery[/bold cyan]"))
     console.print(f"[green] Discovered {len(raw)} unique keywords[/green]\n")
 
-    #phase 2
+    # ── PHASE 2 ───────────────────────────────────────────────
     console.print(Rule("[bold cyan]Phase 2 — Scoring & Intent Analysis[/bold cyan]"))
 
-    analyzed = analyze_keywords(raw)#returns a new list sorted by score descending
+    analyzed = analyze_keywords(raw)
 
     table = Table(header_style="bold cyan", border_style="dim", show_lines=True)
-    table.add_column("#",        width=4)
-    table.add_column("Keyword",  width=42)
-    table.add_column("Intent",   width=19)
-    table.add_column("Score",    width=16)
-    table.add_column("Source",   width=19)
+    table.add_column("#",       width=4)
+    table.add_column("Keyword", width=42)
+    table.add_column("Intent",  width=19)
+    table.add_column("Score",   width=16)
+    table.add_column("Source",  width=19)
 
     intent_colors = {
         "transactional": "green",
@@ -53,13 +78,13 @@ def run():
 
     console.print(table)
 
-    best = analyzed[0]#blog written about this keyword
+    best = analyzed[0]
     related = [k["keyword"] for k in analyzed[1:12]]
 
     console.print(f"\n[bold green] Best keyword selected:[/bold green] [bold white]{best['keyword']}[/bold white]")
     console.print(f"  Intent: [yellow]{best['intent']}[/yellow]   Score: [green]{best['score']}[/green]\n")
 
-    # phase 3
+    # ── PHASE 3 ───────────────────────────────────────────────
     console.print(Rule("[bold cyan]Phase 3 — SEO Blog Generation (Llama 3.3 via Groq)[/bold cyan]"))
     console.print("[dim]Generating full blog post...[/dim]\n")
 
@@ -72,8 +97,11 @@ def run():
         padding=(1, 2)
     ))
 
-    #save to file
-    fname = "output_blog.txt"
+    import datetime
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    safe_keyword = best["keyword"][:40].replace(" ", "_").replace("/", "-").replace("?", "")
+    fname = f"output/blog_{safe_keyword}_{timestamp}.txt"
+
     with open(fname, "w", encoding="utf-8") as f:
         f.write(f"KEYWORD: {best['keyword']}\n")
         f.write(f"INTENT: {best['intent']} | SCORE: {best['score']}\n\n")

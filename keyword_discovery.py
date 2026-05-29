@@ -8,28 +8,23 @@ SERPER_KEY = os.getenv("SERPER_API_KEY")
 # These are your seed topics — what Times Prime is about
 SEED_KEYWORDS = [
 
-    "times prime membership",       
     "times prime benefits",            
-    "times prime coupon code",         
+    "times prime ",         
     "times prime vs cash karo", 
     "times prime vs coupon dunia",
     "times prime vs grab on",    
     "zomato gold vs swiggy one",   
     "best membership app india",
-
     "zomato gold coupon",             
     "swiggy one membership discount", 
     "amazon prime discount india",   
     "hotstar subscription offer",     
-    "myntra insider benefits",       
-
+    "myntra insider benefits",
+    "gaana membership"       
     "best subscription deals india", 
     "how to save money on food delivery india", 
-    "cashback offers india 2025",     
+    "cashback offers india 2026",     
     "free ott subscription india",
-
-    "ipl streaming discount 2025",   
-    "diwali offers membership india", 
 
 ]
 
@@ -71,6 +66,49 @@ def discover_all_keywords() -> list[dict]:
                 all_keywords.append({"keyword": kw, "source": "autocomplete", "seed": seed})
 
         #source 2:serper related searches + people also ask
+        for kw in get_serper_results(seed):
+            if kw not in seen:
+                seen.add(kw)
+                all_keywords.append({"keyword": kw, "source": "serper", "seed": seed})
+
+    return all_keywords
+
+def discover_from_input(user_query: str) -> list[dict]:
+    """
+    Takes a user's search query and expands it into
+    seed variations, then discovers keywords from those.
+    """
+    query = user_query.strip().lower()
+    import datetime
+    year = datetime.datetime.now().year
+
+    # expand one query into multiple seeds
+    seeds = [query]
+
+    if "india" not in query:
+        seeds.append(query + " india")
+
+    if str(year) not in query:
+        seeds.append(query + f" {year}")
+
+    transactional_words = ["coupon", "discount", "offer", "deal", "promo", "code"]
+    if not any(w in query for w in transactional_words):
+        seeds.append(query + " discount india")
+        seeds.append(query + " coupon code")
+
+    if "best" not in query:
+        seeds.append("best " + query)
+
+    # reuse existing functions with custom seeds
+    all_keywords = []
+    seen = set()
+
+    for seed in seeds:
+        for kw in get_google_suggestions(seed):
+            if kw not in seen:
+                seen.add(kw)
+                all_keywords.append({"keyword": kw, "source": "autocomplete", "seed": seed})
+
         for kw in get_serper_results(seed):
             if kw not in seen:
                 seen.add(kw)
