@@ -17,15 +17,22 @@ built-in quality evaluation.
 - Python — core pipeline
 - Rich — terminal UI
 
+---
+
 ## Setup
 1. Clone the repo
 2. pip install -r requirements.txt
 3. Copy .env.example to .env and add your API keys
 4. python agent.py
 
-## Sample output
-<img width="1233" height="900" alt="image" src="https://github.com/user-attachments/assets/70e338fc-9e1c-4cb8-863b-64d7fb69266a" />
+---
 
+## Sample output
+<img width="1302" height="877" alt="image" src="https://github.com/user-attachments/assets/f1cef38d-8f2b-41e2-a29e-05a625426148" />
+<img width="1290" height="886" alt="image" src="https://github.com/user-attachments/assets/9361f51d-92ed-4aca-9e2f-4793da1e773f" />
+<img width="1281" height="878" alt="image" src="https://github.com/user-attachments/assets/ab75db5f-852b-41c5-815f-d70cf869ebbb" />
+
+---
 
 ## Why this matters
 Businesses spend huge time and money researching keywords, planning content, and writing SEO blogs manually. This agent automates the entire workflow — from keyword discovery to content generation — helping teams scale organic traffic faster while reducing content production cost and effort.
