@@ -21,7 +21,7 @@ def run():
         border_style="magenta"
     ))
 
-    # ── MODE SELECTION ────────────────────────────────────────
+    # mode selection
     console.print("\n[bold cyan]Choose mode:[/bold cyan]")
     console.print("  [green]1[/green] → Type a search query  (like Google)")
     console.print("  [green]2[/green] → Auto run on default seeds\n")
@@ -44,11 +44,11 @@ def run():
         from keyword_discovery import discover_all_keywords
         raw = discover_all_keywords()
 
-    # ── PHASE 1 ───────────────────────────────────────────────
+    #phase 1
     console.print(Rule("[bold cyan]Phase 1 — Keyword Discovery[/bold cyan]"))
     console.print(f"[green] Discovered {len(raw)} unique keywords[/green]\n")
 
-    # ── PHASE 2 ───────────────────────────────────────────────
+    # phase 2
     console.print(Rule("[bold cyan]Phase 2 — Scoring & Intent Analysis[/bold cyan]"))
 
     analyzed = analyze_keywords(raw)
@@ -84,7 +84,7 @@ def run():
     console.print(f"\n[bold green] Best keyword selected:[/bold green] [bold white]{best['keyword']}[/bold white]")
     console.print(f"  Intent: [yellow]{best['intent']}[/yellow]   Score: [green]{best['score']}[/green]\n")
 
-    # ── PHASE 3 ───────────────────────────────────────────────
+    # phase 3
     console.print(Rule("[bold cyan]Phase 3 — SEO Blog Generation (Llama 3.3 via Groq)[/bold cyan]"))
     console.print("[dim]Generating full blog post...[/dim]\n")
 

@@ -1,47 +1,89 @@
 import requests
+import datetime
 import os
 from dotenv import load_dotenv
 
 load_dotenv()
 SERPER_KEY = os.getenv("SERPER_API_KEY")
 
-# These are your seed topics — what Times Prime is about
-SEED_KEYWORDS = [
 
-    "times prime benefits",            
-    "times prime ",         
-    "times prime vs cash karo", 
-    "times prime vs coupon dunia",
-    "times prime vs grab on",    
-    "zomato gold vs swiggy one",   
-    "best membership app india",
-    "zomato gold coupon",             
-    "swiggy one membership discount", 
-    "amazon prime discount india",   
-    "hotstar subscription offer",     
-    "myntra insider benefits",
-    "gaana membership"       
-    "best subscription deals india", 
-    "how to save money on food delivery india", 
-    "cashback offers india 2026",     
-    "free ott subscription india",
+#SEED GENERATION 
+# Instead of a hardcoded list for Times Prime, we now BUILD seeds dynamically
+# from whatever company/niche the user provides.
 
-]
+def build_seeds(company_name: str, niche: str, competitors: list[str]) -> list[str]:
+    """
+    Generate seed keywords from company context.
+    Previously this was a hardcoded SEED_KEYWORDS list for Times Prime.
+    Now any company can use this by passing their own details.
+    """
+    year = datetime.datetime.now().year
+    seeds = []
 
-def get_google_suggestions(seed:str)->list[str]:
-    """Free Google autocomplete API endpoint(no api key)"""
-    url= "https://suggestqueries.google.com/complete/search"
-    params= {"client": "firefox", "q": seed, "hl": "en", "gl": "in"}
-    headers= {"User-Agent": "Mozilla/5.0"}
+    # brand seeds — about this company directly
+    seeds += [
+        f"{company_name} benefits",
+        f"{company_name} review",
+        f"{company_name} offers",
+        f"{company_name} discount {year}",
+        f"is {company_name} worth it",
+        f"{company_name} vs",
+    ]
+
+    # niche seeds — category-level searches
+    seeds += [
+        f"best {niche} platform india",
+        f"{niche} deals india {year}",
+        f"top {niche} offers india",
+        f"how to save money on {niche}",
+        f"best {niche} subscription india",
+        f"cheapest {niche} india",
+    ]
+
+    #competitor comparison seeds — high commercial intent
+    for competitor in competitors[:4]:  # cap at 4 to avoid too many API calls
+        seeds += [
+            f"{company_name} vs {competitor}",
+            f"{competitor} discount india",
+        ]
+
+    # informational/long-tail seeds
+    seeds += [
+        f"how to get {niche} discount india",
+        f"cashback on {niche} india",
+        f"free {niche} subscription india",
+        f"{niche} coupon code {year}",
+    ]
+
+    # deduplicate while preserving order
+    seen = set()
+    unique_seeds = []
+    for s in seeds:
+        if s not in seen:
+            seen.add(s)
+            unique_seeds.append(s)
+
+    return unique_seeds
+
+
+#  KEYWORD FETCHERS 
+
+def get_google_suggestions(seed: str) -> list[str]:
+    """Free Google autocomplete — no API key needed."""
+    url = "https://suggestqueries.google.com/complete/search"
+    params = {"client": "firefox", "q": seed, "hl": "en", "gl": "in"}
+    headers = {"User-Agent": "Mozilla/5.0"}
     try:
         r = requests.get(url, params=params, headers=headers, timeout=5)
-        suggestions = r.json()[1] #[0] is original query,[1]is list of suggestions
-        return suggestions
-    except:
+        return r.json()[1]
+    except Exception:
         return []
 
+
 def get_serper_results(seed: str) -> list[str]:
-    """Get related searches from Google via Serper."""
+    """Related searches + People Also Ask via Serper API."""
+    if not SERPER_KEY:
+        return []
     url = "https://google.serper.dev/search"
     headers = {"X-API-KEY": SERPER_KEY, "Content-Type": "application/json"}
     payload = {"q": seed, "gl": "in", "hl": "en", "num": 5}
@@ -51,38 +93,38 @@ def get_serper_results(seed: str) -> list[str]:
         related = [item["query"] for item in data.get("relatedSearches", [])]
         people_ask = [item["question"] for item in data.get("peopleAlsoAsk", [])]
         return related + people_ask
-    except:
+    except Exception:
         return []
 
-def discover_all_keywords() -> list[dict]:
-    all_keywords = []
-    seen = set()#no duplicates,almost instant instaed of list 
 
-    for seed in SEED_KEYWORDS:#loops through all seed keywords
-        #Source 1:free google autocomplete
-        for kw in get_google_suggestions(seed):
-            if kw not in seen:
-                seen.add(kw)
-                all_keywords.append({"keyword": kw, "source": "autocomplete", "seed": seed})
+#  MAIN DISCOVERY FUNCTIONS 
 
-        #source 2:serper related searches + people also ask
-        for kw in get_serper_results(seed):
-            if kw not in seen:
-                seen.add(kw)
-                all_keywords.append({"keyword": kw, "source": "serper", "seed": seed})
-
-    return all_keywords
-
-def discover_from_input(user_query: str) -> list[dict]:
+def discover_all_keywords(
+    company_name: str,
+    niche: str,
+    competitors: list[str],
+) -> list[dict]:
     """
-    Takes a user's search query and expands it into
-    seed variations, then discovers keywords from those.
+    Full keyword discovery from dynamically built seeds.
+    Previously ran on hardcoded Times Prime seeds.
+    Now works for any company.
+    """
+    seeds = build_seeds(company_name, niche, competitors)
+    return _run_discovery(seeds)
+
+
+def discover_from_input(
+    user_query: str,
+    company_name: str = "",
+    niche: str = "",
+) -> list[dict]:
+    """
+    Expand a single user search query into multiple seeds, then discover.
+    Kept from original — now also mixes in company context if provided.
     """
     query = user_query.strip().lower()
-    import datetime
     year = datetime.datetime.now().year
 
-    # expand one query into multiple seeds
     seeds = [query]
 
     if "india" not in query:
@@ -99,7 +141,20 @@ def discover_from_input(user_query: str) -> list[dict]:
     if "best" not in query:
         seeds.append("best " + query)
 
-    # reuse existing functions with custom seeds
+    # mix in company context if available
+    if company_name:
+        seeds.append(f"{company_name} {query}")
+    if niche:
+        seeds.append(f"{niche} {query} india")
+
+    return _run_discovery(seeds)
+
+
+def _run_discovery(seeds: list[str]) -> list[dict]:
+    """
+    Shared runner: loops through seeds, fetches from both sources,
+    deduplicates, and returns a flat list of keyword dicts.
+    """
     all_keywords = []
     seen = set()
 
