@@ -1,4 +1,27 @@
-groq
-requests
-python-dotenv
-rich
+# ── LLM + AI ──────────────────────────────────────────────────────────────────
+groq                          # Llama 3.3 via Groq API
+crewai                        # multi-agent orchestration
+crewai-tools                  # SerperDevTool and other built-in tools
+
+# ── RAG ───────────────────────────────────────────────────────────────────────
+chromadb                      # local vector database
+langchain                     # document loading + text splitting
+langchain-community           # ChromaDB + loaders integration
+langchain-huggingface         # HuggingFace embeddings
+sentence-transformers         # all-MiniLM-L6-v2 embedding model
+pypdf                         # PDF loading
+unstructured                  # Markdown loading
+
+# ── API ───────────────────────────────────────────────────────────────────────
+fastapi                       # REST API framework
+uvicorn[standard]             # ASGI server for FastAPI
+python-multipart              # file upload support in FastAPI
+pydantic                      # request/response validation (bundled with FastAPI)
+
+# ── FRONTEND ──────────────────────────────────────────────────────────────────
+streamlit                     # web UI
+requests                      # HTTP calls from Streamlit to FastAPI
+
+# ── UTILITIES ─────────────────────────────────────────────────────────────────
+python-dotenv                 # loads .env file
+rich                          # CLI formatting

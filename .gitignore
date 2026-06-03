@@ -3,3 +3,5 @@ venv/
 __pycache__/
 *.pyc
 /output
+chroma_store/
+brand_docs/
