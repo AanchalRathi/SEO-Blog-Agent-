@@ -26,7 +26,7 @@ Install:
 import os
 from dotenv import load_dotenv
 
-from crewai import Agent, Task, Crew, Process, LLM
+from crewai import Agent, Task, Crew, Process
 from crewai_tools import SerperDevTool
 
 from keyword_discovery import discover_all_keywords, discover_from_input
@@ -87,11 +87,7 @@ def make_agents(config: CompanyConfig) -> dict:
     within that frame — this produces more focused output
     than a single general-purpose prompt.
     """
-    groq_llm = LLM(
-        model="groq/llama-3.3-70b-versatile",
-        api_key=os.getenv("GROQ_API_KEY"),
-        temperature=0.7,
-    )
+    llm_model = "groq/llama3-8b-8192"
 
     keyword_agent = Agent(
         role="SEO Keyword Research Specialist",
@@ -108,7 +104,7 @@ def make_agents(config: CompanyConfig) -> dict:
         ),
         tools=[search_tool],
         verbose=True,
-        llm=groq_llm,
+        llm=llm_model,
         allow_delegation=False,
     )
 
@@ -127,7 +123,7 @@ def make_agents(config: CompanyConfig) -> dict:
         ),
         tools=[search_tool],
         verbose=True,
-        llm=groq_llm,
+        llm=llm_model,
         allow_delegation=False,
     )
 
@@ -144,7 +140,7 @@ def make_agents(config: CompanyConfig) -> dict:
             f"naturally weave in keywords, and always reflect the brand's "
             f"voice accurately. Your blogs consistently rank on page 1."
         ),
-        llm=groq_llm,
+        llm=llm_model,
         verbose=True,
         allow_delegation=False,
     )

@@ -130,7 +130,7 @@ def generate_blog(
     )
 
     response = client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
+        model = "groq/llama3-8b-8192",
         messages=[{"role": "user", "content": prompt}],
         max_tokens=2000,
         temperature=0.7,
