@@ -27,7 +27,6 @@ import os
 from dotenv import load_dotenv
 
 from crewai import Agent, Task, Crew, Process
-from crewai_tools import SerperDevTool
 
 from keyword_discovery import discover_all_keywords, discover_from_input
 from keyword_analysis import analyze_keywords, build_brand_terms
@@ -35,11 +34,6 @@ from blog_generator import generate_blog, extract_meta
 from tools.rag_tool import setup_rag, get_brand_context
 
 load_dotenv()
-
-# ── TOOLS ─────────────────────────────────────────────────────────────────────
-
-search_tool = SerperDevTool()   # gives agents live Google search capability
-
 
 # ── COMPANY CONFIG ────────────────────────────────────────────────────────────
 
@@ -87,7 +81,7 @@ def make_agents(config: CompanyConfig) -> dict:
     within that frame — this produces more focused output
     than a single general-purpose prompt.
     """
-    llm_model = "groq/llama3-8b-8192"
+    llm_model = "groq/llama-3.3-70b-versatile"
 
     keyword_agent = Agent(
         role="SEO Keyword Research Specialist",
@@ -102,7 +96,6 @@ def make_agents(config: CompanyConfig) -> dict:
             f"drive conversions vs just traffic, and you understand the "
             f"{config.region} market deeply."
         ),
-        tools=[search_tool],
         verbose=True,
         llm=llm_model,
         allow_delegation=False,
@@ -121,7 +114,6 @@ def make_agents(config: CompanyConfig) -> dict:
             f"search intent deeply and know how to position content to beat "
             f"established competitors."
         ),
-        tools=[search_tool],
         verbose=True,
         llm=llm_model,
         allow_delegation=False,
