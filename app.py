@@ -20,10 +20,23 @@ st.markdown("""
 html, body, [class*="css"] { font-family: 'DM Sans', sans-serif; }
 #MainMenu, footer, header { visibility: hidden; }
 .block-container { padding-top: 2rem; padding-bottom: 2rem; }
+
+/* ── sidebar collapse fix ── */
+[data-testid="collapsedControl"] { display: none !important; }
+[data-testid="stSidebarCollapseButton"] { display: none !important; }
+button[kind="headerNoPadding"] { display: none !important; }
+[data-testid="stSidebar"] {
+    min-width: 16rem !important;
+    max-width: 40rem !important;
+    transform: none !important;
+}
+
+/* ── sidebar styling ── */
 [data-testid="stSidebar"] { background: linear-gradient(160deg, #0f0f1a 0%, #1a1a2e 100%); border-right: 1px solid rgba(255,255,255,0.06); }
 [data-testid="stSidebar"] * { color: #e2e8f0 !important; }
 [data-testid="stSidebar"] .stTextInput input { background: rgba(255,255,255,0.05) !important; border: 1px solid rgba(255,255,255,0.1) !important; border-radius: 8px !important; color: #e2e8f0 !important; }
 [data-testid="stSidebar"] label { font-size: 0.78rem !important; font-weight: 500 !important; letter-spacing: 0.05em !important; text-transform: uppercase !important; color: #94a3b8 !important; }
+
 .logo-block { padding: 1.5rem 0 1rem 0; border-bottom: 1px solid rgba(255,255,255,0.08); margin-bottom: 1.5rem; }
 .logo-title { font-family: 'Syne', sans-serif; font-size: 1.6rem; font-weight: 800; background: linear-gradient(135deg, #a78bfa, #60a5fa, #34d399); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; margin: 0; }
 .logo-sub { font-size: 0.72rem; color: #64748b; letter-spacing: 0.08em; text-transform: uppercase; margin-top: 0.3rem; }
