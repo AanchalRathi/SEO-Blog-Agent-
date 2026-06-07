@@ -1,282 +1,180 @@
 """
-app.py — Streamlit frontend
-
-What this does:
-    Provides a clean web UI so any company can use the SEO agent
-    without touching code. They fill a form, upload brand docs,
-    click Generate, and get a full blog post with meta fields.
-
-    Calls api.py under the hood via HTTP — so the frontend and
-    backend are fully decoupled.
-
-Run locally:
-    # Terminal 1 — start the API
-    uvicorn api:app --reload --port 8000
-
-    # Terminal 2 — start the UI
-    streamlit run app.py
-
-Install:
-    pip install streamlit requests
+app.py — Streamlit frontend (beautified)
 """
 
 import streamlit as st
 import requests
-import json
 
-# ── CONFIG ────────────────────────────────────────────────────────────────────
-
-API_URL = "http://localhost:8000"   # change to deployed URL in production
+API_URL = "http://localhost:8000"
 
 st.set_page_config(
     page_title="SEO Agent",
     page_icon="🔍",
     layout="wide",
+    initial_sidebar_state="expanded",
 )
 
+st.markdown("""
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&display=swap');
+html, body, [class*="css"] { font-family: 'DM Sans', sans-serif; }
+#MainMenu, footer, header { visibility: hidden; }
+.block-container { padding-top: 2rem; padding-bottom: 2rem; }
+[data-testid="stSidebar"] { background: linear-gradient(160deg, #0f0f1a 0%, #1a1a2e 100%); border-right: 1px solid rgba(255,255,255,0.06); }
+[data-testid="stSidebar"] * { color: #e2e8f0 !important; }
+[data-testid="stSidebar"] .stTextInput input { background: rgba(255,255,255,0.05) !important; border: 1px solid rgba(255,255,255,0.1) !important; border-radius: 8px !important; color: #e2e8f0 !important; }
+[data-testid="stSidebar"] label { font-size: 0.78rem !important; font-weight: 500 !important; letter-spacing: 0.05em !important; text-transform: uppercase !important; color: #94a3b8 !important; }
+.logo-block { padding: 1.5rem 0 1rem 0; border-bottom: 1px solid rgba(255,255,255,0.08); margin-bottom: 1.5rem; }
+.logo-title { font-family: 'Syne', sans-serif; font-size: 1.6rem; font-weight: 800; background: linear-gradient(135deg, #a78bfa, #60a5fa, #34d399); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; margin: 0; }
+.logo-sub { font-size: 0.72rem; color: #64748b; letter-spacing: 0.08em; text-transform: uppercase; margin-top: 0.3rem; }
+.hero { background: linear-gradient(135deg, #0f0f1a 0%, #1e1b4b 50%, #0f172a 100%); border: 1px solid rgba(167,139,250,0.2); border-radius: 20px; padding: 2.5rem 3rem; margin-bottom: 2rem; position: relative; overflow: hidden; }
+.hero::before { content: ''; position: absolute; top: -50%; right: -20%; width: 400px; height: 400px; background: radial-gradient(circle, rgba(167,139,250,0.08) 0%, transparent 70%); pointer-events: none; }
+.hero-title { font-family: 'Syne', sans-serif; font-size: 2.8rem; font-weight: 800; color: #f8fafc; line-height: 1.1; margin: 0 0 0.5rem 0; }
+.hero-title span { background: linear-gradient(135deg, #a78bfa, #60a5fa); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+.hero-sub { color: #94a3b8; font-size: 1rem; font-weight: 300; margin: 0; max-width: 500px; }
+.phases { display: flex; gap: 0.75rem; margin-top: 1.5rem; flex-wrap: wrap; }
+.phase-badge { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 100px; padding: 0.3rem 1rem; font-size: 0.75rem; color: #94a3b8; }
+.phase-badge strong { color: #a78bfa; }
+.metric-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; margin-bottom: 2rem; }
+.metric-card { background: linear-gradient(135deg, #1e1b4b 0%, #1a1a2e 100%); border: 1px solid rgba(167,139,250,0.15); border-radius: 14px; padding: 1.2rem 1.5rem; text-align: center; }
+.metric-value { font-family: 'Syne', sans-serif; font-size: 2rem; font-weight: 800; color: #a78bfa; line-height: 1; margin-bottom: 0.3rem; }
+.metric-label { font-size: 0.72rem; color: #64748b; text-transform: uppercase; letter-spacing: 0.06em; }
+.section-header { font-family: 'Syne', sans-serif; font-size: 1.1rem; font-weight: 700; color: #e2e8f0; letter-spacing: 0.02em; margin: 2rem 0 1rem 0; display: flex; align-items: center; gap: 0.5rem; }
+.section-header::after { content: ''; flex: 1; height: 1px; background: linear-gradient(90deg, rgba(167,139,250,0.3), transparent); }
+.meta-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem; }
+.meta-card { background: #0f172a; border: 1px solid rgba(255,255,255,0.06); border-radius: 12px; padding: 1rem 1.2rem; }
+.meta-card-label { font-size: 0.7rem; color: #475569; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 0.4rem; }
+.meta-card-value { font-size: 0.9rem; color: #e2e8f0; font-weight: 500; word-break: break-all; }
+.meta-card-full { grid-column: 1 / -1; }
+.keyword-pill { display: inline-block; background: linear-gradient(135deg, rgba(167,139,250,0.2), rgba(96,165,250,0.2)); border: 1px solid rgba(167,139,250,0.3); border-radius: 100px; padding: 0.4rem 1.2rem; font-size: 0.9rem; color: #a78bfa; font-weight: 600; margin-bottom: 1rem; }
+.blog-wrapper { background: #0f172a; border: 1px solid rgba(255,255,255,0.06); border-radius: 16px; padding: 2rem 2.5rem; line-height: 1.8; color: #cbd5e1; font-size: 0.95rem; }
+.stButton > button { background: linear-gradient(135deg, #7c3aed, #2563eb) !important; color: white !important; border: none !important; border-radius: 10px !important; font-family: 'Syne', sans-serif !important; font-weight: 700 !important; font-size: 1rem !important; width: 100% !important; }
+.stDownloadButton > button { background: rgba(52,211,153,0.1) !important; color: #34d399 !important; border: 1px solid rgba(52,211,153,0.3) !important; border-radius: 10px !important; font-weight: 600 !important; width: 100% !important; }
+.stTabs [data-baseweb="tab-list"] { background: transparent; gap: 0.5rem; }
+.stTabs [data-baseweb="tab"] { background: rgba(255,255,255,0.04) !important; border-radius: 8px !important; color: #64748b !important; font-size: 0.85rem !important; padding: 0.4rem 1.2rem !important; }
+.stTabs [aria-selected="true"] { background: rgba(167,139,250,0.15) !important; color: #a78bfa !important; }
+</style>
+""", unsafe_allow_html=True)
 
-# ── SIDEBAR — COMPANY SETUP ───────────────────────────────────────────────────
-
+# ── SIDEBAR ───────────────────────────────────────────────────────────────────
 with st.sidebar:
-    st.title("🔍 SEO Agent")
-    st.caption("Powered by CrewAI + RAG")
-    st.divider()
-
-    st.subheader("Company Details")
-
-    company_name = st.text_input(
-        "Company name",
-        placeholder="e.g. Acme Corp",
-    )
-
-    niche = st.text_input(
-        "Niche / industry",
-        placeholder="e.g. food delivery, e-commerce, edtech",
-    )
-
-    target_audience = st.text_input(
-        "Target audience",
-        placeholder="e.g. urban Indians who order food online",
-    )
-
-    competitors_raw = st.text_input(
-        "Competitors (comma separated)",
-        placeholder="e.g. RivalCo, CompetitorX",
-    )
-    competitors = [c.strip() for c in competitors_raw.split(",") if c.strip()]
-
-    st.divider()
-    st.subheader("Content Settings")
-
-    tone = st.selectbox(
-        "Writing tone",
-        ["conversational", "professional", "casual", "authoritative"],
-    )
-
+    st.markdown('<div class="logo-block"><p class="logo-title">SEO Agent</p><p class="logo-sub">CrewAI · RAG · Groq</p></div>', unsafe_allow_html=True)
+    st.markdown("**Company Details**")
+    company_name    = st.text_input("Company name",     placeholder="e.g. Zomato")
+    niche           = st.text_input("Niche / industry", placeholder="e.g. food delivery")
+    target_audience = st.text_input("Target audience",  placeholder="e.g. urban Indians")
+    competitors_raw = st.text_input("Competitors",      placeholder="e.g. Swiggy, EatSure")
+    competitors     = [c.strip() for c in competitors_raw.split(",") if c.strip()]
+    st.markdown("---")
+    st.markdown("**Content Settings**")
+    tone   = st.selectbox("Writing tone", ["conversational", "professional", "casual", "authoritative"])
     region = st.text_input("Target region", value="India")
+    st.markdown("---")
+    st.markdown("**Brand Documents**")
+    st.caption("Upload PDFs, TXTs, or MDs for RAG brand context")
+    uploaded_files = st.file_uploader("docs", type=["pdf", "txt", "md"], accept_multiple_files=True, label_visibility="collapsed")
+    if uploaded_files:
+        for f in uploaded_files:
+            st.caption(f"📄 {f.name}")
 
-    st.divider()
-    st.subheader("Brand Documents (optional)")
-    st.caption("Upload PDFs, TXTs, or MDs — RAG will inject brand context into the blog")
+# ── HERO ──────────────────────────────────────────────────────────────────────
+st.markdown("""
+<div class="hero">
+    <h1 class="hero-title">SEO Blog <span>Generator</span></h1>
+    <p class="hero-sub">Multi-agent pipeline that researches real keywords, builds a content strategy, and writes a publish-ready blog post.</p>
+    <div class="phases">
+        <span class="phase-badge"><strong>01</strong> Keyword Discovery</span>
+        <span class="phase-badge"><strong>02</strong> Scoring & Strategy</span>
+        <span class="phase-badge"><strong>03</strong> RAG Brand Context</span>
+        <span class="phase-badge"><strong>04</strong> Blog Generation</span>
+    </div>
+</div>
+""", unsafe_allow_html=True)
 
-    uploaded_files = st.file_uploader(
-        "Upload brand docs",
-        type=["pdf", "txt", "md"],
-        accept_multiple_files=True,
-    )
-
-
-# ── MAIN AREA ─────────────────────────────────────────────────────────────────
-
-st.title("SEO Blog Generator")
-st.caption("Fill in your company details in the sidebar, then generate a fully SEO-optimized blog post.")
-
-# Optional: manual keyword query
-st.subheader("Keyword Mode")
-col1, col2 = st.columns([3, 1])
-
+col1, col2 = st.columns([4, 1])
 with col1:
-    user_query = st.text_input(
-        "Type a search query (optional)",
-        placeholder="e.g. best food delivery discount india — leave blank to auto-generate",
-    )
-
+    user_query = st.text_input("query", label_visibility="collapsed", placeholder="Optional — type a keyword to target, or leave blank to auto-generate")
 with col2:
-    st.write("")  # spacer
-    st.write("")  # spacer
-    generate_btn = st.button("🚀 Generate Blog", use_container_width=True, type="primary")
+    generate_btn = st.button("🚀 Generate", use_container_width=True, type="primary")
 
-
-# ── VALIDATION ────────────────────────────────────────────────────────────────
-
-def validate() -> str | None:
-    """Returns error message string if invalid, None if ok."""
-    if not company_name.strip():
-        return "Please enter your company name in the sidebar."
-    if not niche.strip():
-        return "Please enter your niche / industry in the sidebar."
-    if not target_audience.strip():
-        return "Please enter your target audience in the sidebar."
+# ── HELPERS ───────────────────────────────────────────────────────────────────
+def validate():
+    if not company_name.strip():    return "Please enter your company name in the sidebar."
+    if not niche.strip():           return "Please enter your niche / industry in the sidebar."
+    if not target_audience.strip(): return "Please enter your target audience in the sidebar."
     return None
 
-
-# ── UPLOAD DOCS ───────────────────────────────────────────────────────────────
-
-def upload_brand_docs(company: str, files) -> bool:
-    """Uploads brand docs to the API before generating."""
-    if not files:
-        return True  # no docs is fine — RAG just skips
-
-    file_tuples = [
-        ("files", (f.name, f.getvalue(), f.type))
-        for f in files
-    ]
-
+def upload_brand_docs(company, files):
+    if not files: return
     try:
-        resp = requests.post(
-            f"{API_URL}/upload-docs",
-            params={"company_name": company},
-            files=file_tuples,
-            timeout=30,
-        )
+        resp = requests.post(f"{API_URL}/upload-docs", params={"company_name": company}, files=[("files", (f.name, f.getvalue(), f.type)) for f in files], timeout=30)
         if resp.status_code == 200:
-            data = resp.json()
-            st.success(f"✓ Uploaded {len(data['files_saved'])} brand doc(s): {', '.join(data['files_saved'])}")
-            return True
-        else:
-            st.warning(f"Doc upload issue: {resp.text} — continuing without brand context.")
-            return True  # still continue, RAG just skips
-    except Exception as e:
-        st.warning(f"Could not upload docs: {e} — continuing without brand context.")
-        return True
-
+            st.success(f"✓ Uploaded {len(resp.json()['files_saved'])} brand doc(s)")
+    except Exception:
+        st.warning("Could not upload docs — continuing without brand context.")
 
 # ── GENERATE ──────────────────────────────────────────────────────────────────
-
 if generate_btn:
     error = validate()
     if error:
         st.error(error)
     else:
-        # Step 1 — upload docs if any
         if uploaded_files:
             with st.spinner("Uploading brand documents..."):
                 upload_brand_docs(company_name, uploaded_files)
 
-        # Step 2 — run the pipeline
         with st.spinner("Running SEO agent pipeline... this takes ~30-60 seconds"):
-            payload = {
-                "company_name":    company_name.strip(),
-                "niche":           niche.strip(),
-                "target_audience": target_audience.strip(),
-                "competitors":     competitors,
-                "user_query":      user_query.strip(),
-                "tone":            tone,
-                "region":          region.strip(),
-            }
-
             try:
-                resp = requests.post(
-                    f"{API_URL}/generate",
-                    json=payload,
-                    timeout=180,    # pipeline can take up to 3 min
-                )
+                resp   = requests.post(f"{API_URL}/generate", json={"company_name": company_name.strip(), "niche": niche.strip(), "target_audience": target_audience.strip(), "competitors": competitors, "user_query": user_query.strip(), "tone": tone, "region": region.strip()}, timeout=180)
                 result = resp.json()
-
             except requests.exceptions.ConnectionError:
-                st.error(
-                    "Cannot connect to the API. "
-                    "Make sure `uvicorn api:app --reload --port 8000` is running."
-                )
+                st.error("Cannot connect to the API. Make sure `uvicorn api:app --reload --port 8000` is running.")
                 st.stop()
-
             except Exception as e:
                 st.error(f"Something went wrong: {e}")
                 st.stop()
 
-        # Step 3 — display results
         if not result.get("success"):
             st.error(f"Pipeline failed: {result.get('error', 'Unknown error')}")
         else:
             st.success(f"✓ Blog generated for **{result['company_name']}**")
 
-            # ── METRICS ROW ───────────────────────────────────────────────────
-            m1, m2, m3, m4 = st.columns(4)
-            m1.metric("Keywords Found", result["keywords_found"])
-            m2.metric("Best Keyword Score", result["score"])
-            m3.metric("Search Intent", result["intent"].capitalize())
-            m4.metric("Target Keyword", result["keyword"][:20] + "..." if len(result["keyword"]) > 20 else result["keyword"])
+            st.markdown("""<div class="metric-row">
+                <div class="metric-card"><div class="metric-value">{kw}</div><div class="metric-label">Keywords Found</div></div>
+                <div class="metric-card"><div class="metric-value">{sc}</div><div class="metric-label">Best Score</div></div>
+                <div class="metric-card"><div class="metric-value">{it}</div><div class="metric-label">Intent</div></div>
+                <div class="metric-card"><div class="metric-value">✓</div><div class="metric-label">Blog Ready</div></div>
+            </div>""".format(kw=result["keywords_found"], sc=result["score"], it=result["intent"].capitalize()[:5]), unsafe_allow_html=True)
 
-            st.divider()
+            st.markdown(f'<div class="keyword-pill">🎯 {result["keyword"]}</div>', unsafe_allow_html=True)
+            st.markdown('<div class="section-header">SEO Meta</div>', unsafe_allow_html=True)
+            st.markdown(f"""<div class="meta-grid">
+                <div class="meta-card"><div class="meta-card-label">SEO Title</div><div class="meta-card-value">{result["seo_title"]}</div></div>
+                <div class="meta-card"><div class="meta-card-label">URL Slug</div><div class="meta-card-value">/{result["slug"]}</div></div>
+                <div class="meta-card meta-card-full"><div class="meta-card-label">Meta Description</div><div class="meta-card-value">{result["meta_description"]}</div></div>
+            </div>""", unsafe_allow_html=True)
 
-            # ── SEO META ──────────────────────────────────────────────────────
-            st.subheader("SEO Meta")
-            col_a, col_b = st.columns(2)
-
-            with col_a:
-                st.text_input("SEO Title", value=result["seo_title"], disabled=True)
-                st.text_input("Slug", value=result["slug"], disabled=True)
-
-            with col_b:
-                st.text_area("Meta Description", value=result["meta_description"], height=90, disabled=True)
-
-            st.divider()
-
-            # ── BLOG OUTPUT ───────────────────────────────────────────────────
-            st.subheader("Generated Blog Post")
-
+            st.markdown('<div class="section-header">Generated Blog Post</div>', unsafe_allow_html=True)
             tab1, tab2 = st.tabs(["📄 Formatted", "📋 Raw Text"])
-
             with tab1:
+                st.markdown('<div class="blog-wrapper">', unsafe_allow_html=True)
                 st.markdown(result["blog"])
-
+                st.markdown('</div>', unsafe_allow_html=True)
             with tab2:
-                st.text_area(
-                    "Raw blog text — copy and paste into your CMS",
-                    value=result["blog"],
-                    height=600,
-                )
+                st.text_area("", value=result["blog"], height=500, label_visibility="collapsed")
 
-            # ── DOWNLOAD ──────────────────────────────────────────────────────
-            st.divider()
-            download_content = (
-                f"COMPANY       : {result['company_name']}\n"
-                f"KEYWORD       : {result['keyword']}\n"
-                f"INTENT        : {result['intent']} | SCORE: {result['score']}\n"
-                f"SEO TITLE     : {result['seo_title']}\n"
-                f"META DESC     : {result['meta_description']}\n"
-                f"SLUG          : {result['slug']}\n"
-                f"\n{'='*60}\n\n"
-                f"{result['blog']}"
-            )
-
-            st.download_button(
-                label="⬇️ Download Blog as .txt",
-                data=download_content,
-                file_name=f"{result['slug'] or 'blog'}.txt",
-                mime="text/plain",
-                use_container_width=True,
-            )
-
+            st.markdown("---")
+            st.download_button(label="⬇️ Download Blog as .txt", data=f"COMPANY: {result['company_name']}\nKEYWORD: {result['keyword']}\nSEO TITLE: {result['seo_title']}\nMETA: {result['meta_description']}\nSLUG: {result['slug']}\n\n{'='*60}\n\n{result['blog']}", file_name=f"{result['slug'] or 'blog'}.txt", mime="text/plain", use_container_width=True)
 
 # ── EMPTY STATE ───────────────────────────────────────────────────────────────
-
 else:
-    st.info(
-        "👈 Fill in your company details in the sidebar, then click **Generate Blog** to start."
-    )
-
-    with st.expander("How it works"):
-        st.markdown("""
-**Phase 1 — Keyword Discovery**
-Discovers hundreds of real keywords from Google autocomplete and Serper based on your company and competitors.
-
-**Phase 2 — Scoring & Strategy**
-Scores every keyword by search intent, brand relevance, and long-tail value. Picks the best one to target.
-
-**Phase 3 — Blog Generation**
-Writes a complete 900-1100 word SEO blog post with H2 sections, FAQs, offers, and a CTA — using your brand docs for accuracy.
-
-**RAG (optional)**
-Upload your brand guidelines, product docs, or past blogs — the system uses them to write content that actually sounds like your brand.
-        """)
+    st.markdown('<div class="section-header">How It Works</div>', unsafe_allow_html=True)
+    c1, c2, c3, c4 = st.columns(4)
+    with c1:
+        st.markdown("**🔍 Keyword Discovery**\n\nFinds hundreds of real keywords from Google autocomplete and Serper based on your company and competitors.")
+    with c2:
+        st.markdown("**📊 Scoring & Strategy**\n\nScores every keyword by intent, brand relevance, and long-tail value. Picks the best one to target.")
+    with c3:
+        st.markdown("**🧠 RAG Brand Context**\n\nReads your brand docs and retrieves relevant context so the blog sounds like your brand, not generic AI.")
+    with c4:
+        st.markdown("**✍️ Blog Generation**\n\nWrites a complete 900-1100 word SEO blog with H2s, FAQs, offers, and a CTA using Groq + Llama.")
