@@ -19,3 +19,5 @@ python-multipart
 streamlit
 pypdf
 unstructured
+sqlalchemy 
+psycopg2-binary
