@@ -1,0 +1,10 @@
+venv/
+__pycache__/
+*.pyc
+*.pyo
+.env
+chroma_store/
+brand_docs/
+output/
+.git/
+*.md
