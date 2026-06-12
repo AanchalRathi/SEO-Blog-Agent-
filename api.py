@@ -21,7 +21,7 @@ import json
 import shutil
 import asyncio
 from pathlib import Path
-from concurrent.futures import ThreadPoolExecutor
+import threading
 
 from fastapi import FastAPI, HTTPException, UploadFile, File, Depends
 from fastapi.middleware.cors import CORSMiddleware
@@ -50,11 +50,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# Thread pool — runs the blocking pipeline without freezing FastAPI
-# max_workers=2 means 2 blogs can generate simultaneously
-executor = ThreadPoolExecutor(max_workers=2)
-
 
 @app.on_event("startup")
 def startup():
@@ -195,25 +190,17 @@ def health():
 
 @app.post("/generate")
 async def generate(req: GenerateRequest, db: Session = Depends(get_db)):
-    """
-    Starts the pipeline in a background thread and returns a job_id instantly.
-    The response comes back in < 1 second — no timeout possible.
-    
-    Frontend should then poll GET /jobs/{job_id} every 5 seconds.
-    """
     # create job record in DB
     job = create_job(db, company_name=req.company_name, niche=req.niche)
 
-    # fire pipeline in background — does not block this response
-    loop = asyncio.get_event_loop()
-    loop.run_in_executor(
-        executor,
-        _run_pipeline,
-        job.id,
-        req.model_dump(),   # converts pydantic model to plain dict safely
+    # use threading directly — more reliable than run_in_executor on Render
+    thread = threading.Thread(
+        target=_run_pipeline,
+        args=(job.id, req.model_dump()),
+        daemon=True,
     )
+    thread.start()
 
-    # return instantly — Streamlit will poll /jobs/{job_id} for updates
     return {
         "job_id":  job.id,
         "status":  "pending",
