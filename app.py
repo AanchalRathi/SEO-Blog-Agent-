@@ -4,8 +4,8 @@ app.py — Streamlit frontend with Blog History tab
 
 import streamlit as st
 import requests
-
-API_URL = "https://seo-agent-api-epz1.onrender.com"
+import os 
+API_URL =os.getenv("API_URL", "https://seo-agent-api-epz1.onrender.com")
 
 st.set_page_config(
     page_title="SEO Agent",
