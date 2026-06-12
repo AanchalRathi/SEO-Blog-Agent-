@@ -3,18 +3,21 @@ database.py — PostgreSQL layer
 
 What this does:
     1. Connects to PostgreSQL using SQLAlchemy
-    2. Defines the Blog table as a Python class
-    3. Creates the table automatically on first run
+    2. Defines the Blog table and Job table
+    3. Creates tables automatically on first run
     4. Provides functions to save and retrieve blogs
+    5. Provides functions to manage async generation jobs
 """
 
 import os
+import uuid
+import json
 from datetime import datetime
 from dotenv import load_dotenv
 
 from sqlalchemy import (
     create_engine, Column, Integer, String,
-    Text, DateTime
+    Text, DateTime, Boolean
 )
 from sqlalchemy.orm import declarative_base, sessionmaker
 
@@ -24,17 +27,20 @@ load_dotenv()
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 
-engine = create_engine(DATABASE_URL, pool_pre_ping=True,connect_args={"sslmode": "require"})
+engine = create_engine(
+    DATABASE_URL,
+    pool_pre_ping=True,
+    connect_args={"sslmode": "require"},
+)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
 
-# ── MODEL ─────────────────────────────────────────────────────────────────────
+# ── BLOG MODEL ────────────────────────────────────────────────────────────────
 
 class Blog(Base):
     """
     The blogs table — one row per generated blog.
-    SQLAlchemy reads this class and creates the actual SQL table.
     """
     __tablename__ = "blogs"
 
@@ -53,12 +59,37 @@ class Blog(Base):
     created_at       = Column(DateTime, default=datetime.utcnow)
 
 
+# ── JOB MODEL ─────────────────────────────────────────────────────────────────
+
+class Job(Base):
+    """
+    The jobs table — tracks every async blog generation request.
+    
+    Lifecycle:
+        pending  → job created, pipeline not started yet
+        running  → pipeline is actively running in background thread
+        done     → pipeline finished, result stored in result_json
+        failed   → pipeline crashed, error message stored in error
+    """
+    __tablename__ = "jobs"
+
+    id          = Column(String,  primary_key=True, default=lambda: str(uuid.uuid4()))
+    status      = Column(String,  default="pending")
+    company_name = Column(String, nullable=True)
+    niche       = Column(String,  nullable=True)
+    result_json = Column(Text,    nullable=True)   # full result dict as JSON string
+    error       = Column(Text,    nullable=True)   # error message if failed
+    blog_id     = Column(Integer, nullable=True)   # DB id of saved blog when done
+    created_at  = Column(DateTime, default=datetime.utcnow)
+    updated_at  = Column(DateTime, default=datetime.utcnow)
+
+
 # ── TABLE CREATION ────────────────────────────────────────────────────────────
 
 def init_db():
     """
     Creates all tables if they don't exist yet.
-    Safe to call multiple times.
+    Safe to call multiple times — won't drop existing data.
     Called once at app startup in api.py.
     """
     Base.metadata.create_all(bind=engine)
@@ -79,13 +110,9 @@ def get_db():
         db.close()
 
 
-# ── CRUD OPERATIONS ───────────────────────────────────────────────────────────
+# ── BLOG CRUD ─────────────────────────────────────────────────────────────────
 
 def save_blog(db, result: dict, niche: str = "") -> Blog:
-    """
-    Saves a generated blog result to the database.
-    Called in api.py after every successful /generate run.
-    """
     blog = Blog(
         company_name     = result.get("company_name", ""),
         niche            = niche,
@@ -108,10 +135,6 @@ def save_blog(db, result: dict, niche: str = "") -> Blog:
 
 
 def get_blogs_by_company(db, company_name: str) -> list:
-    """
-    Returns all blogs for a specific company, newest first.
-    Used in the Streamlit UI blog history tab.
-    """
     return (
         db.query(Blog)
         .filter(Blog.company_name.ilike(f"%{company_name}%"))
@@ -121,16 +144,10 @@ def get_blogs_by_company(db, company_name: str) -> list:
 
 
 def get_all_blogs(db) -> list:
-    """
-    Returns all blogs across all companies, newest first.
-    """
     return db.query(Blog).order_by(Blog.created_at.desc()).all()
 
 
 def update_blog_status(db, blog_id: int, status: str) -> Blog | None:
-    """
-    Updates the status of a blog — draft, published, or archived.
-    """
     blog = db.query(Blog).filter(Blog.id == blog_id).first()
     if blog:
         blog.status = status
@@ -141,10 +158,6 @@ def update_blog_status(db, blog_id: int, status: str) -> Blog | None:
 
 
 def keyword_exists(db, company_name: str, keyword: str) -> bool:
-    """
-    Checks if a blog for this keyword already exists for this company.
-    Prevents wasting API calls regenerating the same content.
-    """
     existing = (
         db.query(Blog)
         .filter(
@@ -157,9 +170,6 @@ def keyword_exists(db, company_name: str, keyword: str) -> bool:
 
 
 def delete_blog(db, blog_id: int) -> bool:
-    """
-    Permanently deletes a blog. Returns True if deleted, False if not found.
-    """
     blog = db.query(Blog).filter(Blog.id == blog_id).first()
     if blog:
         db.delete(blog)
@@ -167,3 +177,70 @@ def delete_blog(db, blog_id: int) -> bool:
         print(f"[DB] Blog {blog_id} deleted")
         return True
     return False
+
+
+# ── JOB CRUD ──────────────────────────────────────────────────────────────────
+
+def create_job(db, company_name: str = "", niche: str = "") -> Job:
+    """
+    Creates a new job record in pending state.
+    Called at the start of every /generate request.
+    """
+    job = Job(
+        company_name = company_name,
+        niche        = niche,
+        status       = "pending",
+    )
+    db.add(job)
+    db.commit()
+    db.refresh(job)
+    print(f"[DB] Job created — ID: {job.id}")
+    return job
+
+
+def get_job(db, job_id: str) -> Job | None:
+    """
+    Fetches a job by ID.
+    Called by GET /jobs/{job_id} endpoint.
+    """
+    return db.query(Job).filter(Job.id == job_id).first()
+
+
+def update_job_status(db, job_id: str, status: str):
+    """
+    Updates job to running or failed with no result.
+    """
+    job = db.query(Job).filter(Job.id == job_id).first()
+    if job:
+        job.status     = status
+        job.updated_at = datetime.utcnow()
+        db.commit()
+        print(f"[DB] Job {job_id} → {status}")
+
+
+def complete_job(db, job_id: str, result: dict, blog_id: int):
+    """
+    Marks job as done and stores the full result as JSON.
+    Called after successful pipeline run.
+    """
+    job = db.query(Job).filter(Job.id == job_id).first()
+    if job:
+        job.status      = "done"
+        job.result_json = json.dumps(result)
+        job.blog_id     = blog_id
+        job.updated_at  = datetime.utcnow()
+        db.commit()
+        print(f"[DB] Job {job_id} → done | Blog ID: {blog_id}")
+
+
+def fail_job(db, job_id: str, error: str):
+    """
+    Marks job as failed and stores the error message.
+    """
+    job = db.query(Job).filter(Job.id == job_id).first()
+    if job:
+        job.status     = "failed"
+        job.error      = error
+        job.updated_at = datetime.utcnow()
+        db.commit()
+        print(f"[DB] Job {job_id} → failed: {error}")

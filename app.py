@@ -157,15 +157,65 @@ with main_tab1:
                     upload_brand_docs(company_name, uploaded_files)
 
             with st.spinner("Running SEO agent pipeline... this takes ~30-60 seconds"):
+                # ── Step 1: Submit job, get job_id instantly ──────────────────
                 try:
-                    resp   = requests.post(f"{API_URL}/generate", json={"company_name": company_name.strip(), "niche": niche.strip(), "target_audience": target_audience.strip(), "competitors": competitors, "user_query": user_query.strip(), "tone": tone, "region": region.strip()}, timeout=180)
-                    result = resp.json()
+                    submit = requests.post(
+                        f"{API_URL}/generate",
+                        json={
+                            "company_name":    company_name.strip(),
+                            "niche":           niche.strip(),
+                            "target_audience": target_audience.strip(),
+                            "competitors":     competitors,
+                            "user_query":      user_query.strip(),
+                            "tone":            tone,
+                            "region":          region.strip(),
+                        },
+                        timeout=15,   # just submitting the job — should be instant
+                    )
+                    job_id = submit.json()["job_id"]
                 except requests.exceptions.ConnectionError:
-                    st.error("Cannot connect to the API. Make sure `uvicorn api:app --reload --port 8000` is running.")
+                    st.error("Cannot connect to the API.")
                     st.stop()
                 except Exception as e:
-                    st.error(f"Something went wrong: {e}")
+                    st.error(f"Failed to start job: {e}")
                     st.stop()
+
+                # ── Step 2: Poll until done ───────────────────────────────────
+                status_box  = st.empty()
+                progress    = st.progress(0)
+                elapsed     = 0
+                result      = None
+
+                while True:
+                    import time
+                    time.sleep(5)
+                    elapsed += 5
+
+                    try:
+                        poll = requests.get(f"{API_URL}/jobs/{job_id}", timeout=10)
+                        data = poll.json()
+                    except Exception:
+                        status_box.warning("Polling failed — retrying...")
+                        continue
+
+                    job_status = data.get("status", "pending")
+
+                    # update progress bar and status message
+                    progress.progress(min(elapsed / 100, 0.95))
+
+                    if job_status == "pending":
+                        status_box.info(f"⏳ Queued... ({elapsed}s)")
+                    elif job_status == "running":
+                        status_box.info(f"🔄 Generating blog... ({elapsed}s elapsed)")
+                    elif job_status == "done":
+                        progress.progress(1.0)
+                        status_box.success("✅ Blog generated!")
+                        result = data.get("result")
+                        break
+                    elif job_status == "failed":
+                        progress.empty()
+                        st.error(f"❌ Pipeline failed: {data.get('error', 'Unknown error')}")
+                        st.stop()
 
             if not result.get("success"):
                 st.error(f"Pipeline failed: {result.get('error', 'Unknown error')}")
