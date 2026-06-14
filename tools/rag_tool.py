@@ -37,11 +37,11 @@ EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 CHROMA_PERSIST_DIR = "chroma_store"
 
 # How many chunks to retrieve per query
-TOP_K = 4
+TOP_K = 3
 
 # Chunk settings — smaller = more precise retrieval
 CHUNK_SIZE    = 500
-CHUNK_OVERLAP = 80
+CHUNK_OVERLAP = 50
 
 
 # ── LOADER ────────────────────────────────────────────────────────────────────
