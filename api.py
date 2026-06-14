@@ -21,7 +21,8 @@ import json
 import shutil
 import asyncio
 from pathlib import Path
-import threading
+import concurrent.futures
+
 
 from fastapi import FastAPI, HTTPException, UploadFile, File, Depends
 from fastapi.middleware.cors import CORSMiddleware
@@ -36,6 +37,7 @@ from database import (
     create_job, get_job, update_job_status, complete_job, fail_job,
 )
 
+executor = concurrent.futures.ThreadPoolExecutor(max_workers=4)
 # ── APP SETUP ─────────────────────────────────────────────────────────────────
 
 app = FastAPI(
@@ -167,6 +169,7 @@ def _run_pipeline(job_id: str, req_data: dict):
         # run the full pipeline — takes 60-90 seconds, no timeout issue
         result = run_crew(config)
         result["company_name"] = req_data["company_name"]
+        result["success"] = True  # add this line
 
         # save blog to DB
         saved = save_blog(db, result, niche=req_data["niche"])
@@ -192,14 +195,13 @@ def health():
 async def generate(req: GenerateRequest, db: Session = Depends(get_db)):
     # create job record in DB
     job = create_job(db, company_name=req.company_name, niche=req.niche)
+    db.flush()  # ensure job row is fully committed before thread starts
+    db.commit()
 
-    # use threading directly — more reliable than run_in_executor on Render
-    thread = threading.Thread(
-        target=_run_pipeline,
-        args=(job.id, req.model_dump()),
-        daemon=True,
-    )
-    thread.start()
+    import time
+    time.sleep(0.5)  # small buffer for DB to settle
+
+    executor.submit(_run_pipeline, job.id, req.model_dump())
 
     return {
         "job_id":  job.id,
