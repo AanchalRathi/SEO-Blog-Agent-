@@ -1,55 +1,226 @@
 import os
+import time
 from groq import Groq
 from dotenv import load_dotenv
 
 load_dotenv()
 client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
+# ── BLOG TEMPLATES ────────────────────────────────────────────────────────────
+# Each template defines a different structure for the blog body.
+# The strategy agent picks which one fits the keyword best.
 
-#PROMPT BUILDER 
+BLOG_STRUCTURES = {
+    "listicle": """
+Use EXACTLY this structure:
 
-def build_prompt(
-    keyword: str,
-    intent: str,
-    related: list[str],
-    company_name: str,
-    niche: str,
-    target_audience: str,
-    brand_context: str = "",       # RAG-retrieved brand context
-    tone: str = "conversational",
-    region: str = "India",
-) -> str:
-    """
-    Builds the full blog generation prompt dynamically.
+SEO TITLE: (under 60 chars, include primary keyword, start with a number e.g. "7 Best...")
+META DESCRIPTION: (under 155 chars, keyword + clear CTA)
+SLUG: (url-friendly, lowercase, hyphens only)
 
-    Previously this was hardcoded inside generate_blog() with
-    Times Prime details baked in. Now every company-specific
-    detail is a parameter — the prompt structure stays the same.
+---BLOG START---
 
-    brand_context is the RAG chunk (empty string until Step 4 adds it).
-    """
-    lsi = ", ".join(related[:8])
-    year = 2026  # can also pass as param if needed
+[H1 — matches SEO title closely, includes number]
 
-    # only include brand context block if RAG has provided something
-    brand_context_block = ""
-    if brand_context.strip():
-        brand_context_block = f"""
-BRAND CONTEXT (use this to stay accurate and on-brand):
-\"\"\"
-{brand_context.strip()}
-\"\"\"
-"""
+[Introduction — 2 paragraphs]
+Hook with a relatable problem or question.
+Mention {company_name} naturally in second paragraph.
 
-    prompt = f"""You are an expert SEO content writer specializing in {niche}.
-You are writing for {company_name} — {target_audience}.
-Tone: {tone}. Target region: {region}.
-{brand_context_block}
-Write a complete SEO-optimized blog post for:
-Primary keyword : {keyword}
-Search intent   : {intent}
-Related keywords to include naturally: {lsi}
+[H2 — Why This List Matters in {region}]
+[1-2 paragraphs setting context for the list]
 
+[H2 — The {number} Best {topic}]
+For each item use this format:
+### {number}. [Item Name]
+[2-3 sentences explaining why this item is on the list]
+[How {company_name} connects to this item]
+
+[H2 — How to Get the Most From {company_name}]
+[2 paragraphs, practical tips, weave in related keywords]
+
+[H2 — Frequently Asked Questions]
+Q: [question using a related keyword]
+A: [concise answer, 2-3 sentences]
+(3 FAQs total)
+
+[Conclusion — 1 paragraph]
+Summarize the list value, clear CTA to try {company_name}.
+
+---BLOG END---
+""",
+
+    "comparison": """
+Use EXACTLY this structure:
+
+SEO TITLE: (under 60 chars, include both things being compared)
+META DESCRIPTION: (under 155 chars, keyword + clear CTA)
+SLUG: (url-friendly, lowercase, hyphens only)
+
+---BLOG START---
+
+[H1 — matches SEO title, includes vs or comparison language]
+
+[Introduction — 2 paragraphs]
+Hook with why this comparison matters to the reader.
+Mention {company_name} naturally in second paragraph.
+
+[H2 — Quick Comparison Table]
+Create a simple markdown table comparing key features:
+| Feature | Option A | Option B |
+|---------|----------|----------|
+
+[H2 — Deep Dive: Option A]
+[2-3 paragraphs, honest pros and cons]
+
+[H2 — Deep Dive: Option B]
+[2-3 paragraphs, honest pros and cons]
+
+[H2 — Which One Should You Choose?]
+[2 paragraphs — give a clear recommendation based on user type]
+[Position {company_name} as the smarter choice with evidence]
+
+[H2 — Frequently Asked Questions]
+Q: [question using a related keyword]
+A: [concise answer, 2-3 sentences]
+(3 FAQs total)
+
+[Conclusion — 1 paragraph]
+Clear verdict, CTA to try {company_name}.
+
+---BLOG END---
+""",
+
+    "educational": """
+Use EXACTLY this structure:
+
+SEO TITLE: (under 60 chars, include primary keyword, start with How or What)
+META DESCRIPTION: (under 155 chars, keyword + clear CTA)
+SLUG: (url-friendly, lowercase, hyphens only)
+
+---BLOG START---
+
+[H1 — matches SEO title closely]
+
+[Introduction — 2 paragraphs]
+Hook with why this topic matters right now.
+Mention {company_name} naturally in second paragraph.
+
+[H2 — What You Need to Know First]
+[2 paragraphs — foundational context, define key terms]
+
+[H2 — Step by Step: How to {main topic}]
+Use numbered steps:
+1. [Step name]
+   [2-3 sentences explaining this step clearly]
+(4-5 steps total)
+
+[H2 — How {company_name} Makes This Easier]
+[2 paragraphs — connect the educational topic to {company_name}'s value]
+[Weave in related keywords naturally]
+
+[H2 — Common Mistakes to Avoid]
+[3 mistakes in short paragraphs or bullets]
+
+[H2 — Frequently Asked Questions]
+Q: [question using a related keyword]
+A: [concise answer, 2-3 sentences]
+(3 FAQs total)
+
+[Conclusion — 1 paragraph]
+Summarize key learnings, CTA to try {company_name}.
+
+---BLOG END---
+""",
+
+    "case_study": """
+Use EXACTLY this structure:
+
+SEO TITLE: (under 60 chars, include company name and result)
+META DESCRIPTION: (under 155 chars, keyword + clear CTA)
+SLUG: (url-friendly, lowercase, hyphens only)
+
+---BLOG START---
+
+[H1 — matches SEO title, focuses on the result/transformation]
+
+[Introduction — 2 paragraphs]
+Hook with the problem that was solved.
+Introduce {company_name} as the solution naturally.
+
+[H2 — The Challenge]
+[2 paragraphs — describe the problem in detail that readers relate to]
+
+[H2 — How {company_name} Helped]
+[2-3 paragraphs — specific features or offers that solved the problem]
+[Use real product details from brand context if available]
+
+[H2 — The Results]
+[2 paragraphs — concrete outcomes, use numbers where possible]
+[Weave in related keywords naturally]
+
+[H2 — Key Takeaways]
+List 3-4 takeaways in this format:
+- [Takeaway]: [one sentence explanation]
+
+[H2 — Frequently Asked Questions]
+Q: [question using a related keyword]
+A: [concise answer, 2-3 sentences]
+(3 FAQs total)
+
+[Conclusion — 1 paragraph]
+Reinforce the transformation, CTA to try {company_name}.
+
+---BLOG END---
+""",
+
+    "faq": """
+Use EXACTLY this structure:
+
+SEO TITLE: (under 60 chars, include primary keyword as a question)
+META DESCRIPTION: (under 155 chars, keyword + clear CTA)
+SLUG: (url-friendly, lowercase, hyphens only)
+
+---BLOG START---
+
+[H1 — matches SEO title, phrased as a question]
+
+[Introduction — 2 paragraphs]
+Hook with why people ask this question.
+Mention {company_name} naturally in second paragraph.
+
+[H2 — The Short Answer]
+[1 paragraph — direct answer to the main question]
+
+[H2 — The Full Explanation]
+[2-3 paragraphs — detailed answer with context]
+[Weave in related keywords naturally]
+
+[H2 — {company_name} and {main topic}: What You Need to Know]
+[2 paragraphs — connect the answer to {company_name}'s offering]
+
+[H2 — Related Questions People Also Ask]
+Q: [related question 1]
+A: [2-3 sentence answer]
+
+Q: [related question 2]
+A: [2-3 sentence answer]
+
+Q: [related question 3]
+A: [2-3 sentence answer]
+
+Q: [related question 4]
+A: [2-3 sentence answer]
+
+Q: [related question 5]
+A: [2-3 sentence answer]
+
+[Conclusion — 1 paragraph]
+Summarize the answer, CTA to try {company_name}.
+
+---BLOG END---
+""",
+
+    "standard": """
 Use EXACTLY this structure:
 
 SEO TITLE: (under 60 chars, include primary keyword)
@@ -82,17 +253,78 @@ A: [concise answer, 2-3 sentences]
 (3 FAQs total)
 
 [Conclusion — 1 paragraph]
-Summarize value, include a clear CTA to try or visit {company_name}.
+Summarize value, clear CTA to try {company_name}.
 
 ---BLOG END---
+""",
+}
+
+#PROMPT BUILDER 
+def build_prompt(
+    keyword: str,
+    intent: str,
+    related: list[str],
+    company_name: str,
+    niche: str,
+    target_audience: str,
+    brand_context: str = "",
+    tone: str = "conversational",
+    region: str = "India",
+    blog_type: str = "standard",
+    angle: str = "",
+) -> str:
+    lsi = ", ".join(related[:8]) if related else ""
+    year = 2026
+
+    # pick the right structure template
+    structure = BLOG_STRUCTURES.get(blog_type, BLOG_STRUCTURES["standard"])
+
+    # fill in the placeholders in the structure template
+    structure = structure.replace("{company_name}", company_name)
+    structure = structure.replace("{region}", region)
+
+    # brand context block
+    brand_context_block = ""
+    if brand_context.strip():
+        brand_context_block = f"""
+BRAND CONTEXT (use this to stay accurate and on-brand):
+\"\"\"
+{brand_context.strip()}
+\"\"\"
+"""
+
+    # content angle block
+    angle_block = ""
+    if angle.strip():
+        angle_block = f"""
+CONTENT ANGLE (this is what makes this post better than competitors):
+{angle.strip()}
+"""
+
+    # related keywords block
+    lsi_block = ""
+    if lsi:
+        lsi_block = f"Related keywords to include naturally: {lsi}\n"
+
+    prompt = f"""You are an expert SEO content writer specializing in {niche}.
+You are writing for {company_name} — {target_audience}.
+Tone: {tone}. Target region: {region}. Year: {year}.
+{brand_context_block}
+{angle_block}
+Write a complete SEO-optimized blog post for:
+Primary keyword : {keyword}
+Search intent   : {intent}
+{lsi_block}
+{structure}
 
 Length: 900-1100 words.
 Use keywords naturally — never stuff.
 Write for a {region} audience in {year}.
-Conversational but authoritative tone."""
+{tone.capitalize()} but authoritative tone.
+If brand context is provided, use real product details, pricing, and USPs from it.
+Never invent features or prices that aren't in the brand context."""
 
     return prompt
-
 
 # MAIN GENERATOR 
 
@@ -103,20 +335,12 @@ def generate_blog(
     company_name: str,
     niche: str,
     target_audience: str,
-    brand_context: str = "",       #injected by RAG in Step 4, empty for now
+    brand_context: str = "",
     tone: str = "conversational",
     region: str = "India",
+    blog_type: str = "standard",
+    angle: str = "",
 ) -> str:
-    """
-    Generates a full SEO blog post using Groq + Llama 3.3.
-
-    Previously accepted only keyword, intent, related —
-    all company context was hardcoded in the prompt.
-    Now accepts full company config and optional RAG context.
-
-    brand_context stays an empty string until rag_tool.py is wired in (Step 4).
-    The function works perfectly without it — RAG just makes it better.
-    """
     prompt = build_prompt(
         keyword=keyword,
         intent=intent,
@@ -127,16 +351,21 @@ def generate_blog(
         brand_context=brand_context,
         tone=tone,
         region=region,
+        blog_type=blog_type,
+        angle=angle,
     )
 
-    response = client.chat.completions.create(
-        model = "llama-3.3-70b-versatile",
-        messages=[{"role": "user", "content": prompt}],
-        max_tokens=2000,
-        temperature=0.7,
-    )
-
-    return response.choices[0].message.content
+    try:
+        response = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=2000,
+            temperature=0.7,
+        )
+        return response.choices[0].message.content
+    except Exception as e:
+        print(f"[Groq] Generation failed: {e}")
+        raise
 
 
 # META GENERATOR 
