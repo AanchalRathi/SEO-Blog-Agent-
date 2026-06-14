@@ -5,7 +5,8 @@ app.py — Streamlit frontend with Blog History tab
 import streamlit as st
 import requests
 import os 
-API_URL =os.getenv("API_URL", "https://seo-agent-api-epz1.onrender.com")
+import time
+API_URL = os.getenv("API_URL", "http://localhost:8000")
 
 st.set_page_config(
     page_title="SEO Agent",
@@ -146,6 +147,11 @@ with main_tab1:
         except Exception:
             st.warning("Could not upload docs — continuing without brand context.")
 
+    if uploaded_files:
+        with st.spinner("Uploading brand documents..."):
+            upload_brand_docs(company_name, uploaded_files)
+        st.warning("⚠️ Note: Uploaded docs are stored temporarily. They will be cleared if the server restarts. Re-upload if brand context stops working.")
+    
     # ── GENERATE ──────────────────────────────────────────────────────────────
     if generate_btn:
         error = validate()
@@ -187,9 +193,13 @@ with main_tab1:
                 result      = None
 
                 while True:
-                    import time
                     time.sleep(5)
                     elapsed += 5
+
+                    if elapsed > 300:  # 5 minute hard timeout
+                        progress.empty()
+                        status_box.error("⏳ Timed out after 5 minutes. The pipeline may still be running — check Blog History in a few minutes.")
+                        st.stop()
 
                     try:
                         poll = requests.get(f"{API_URL}/jobs/{job_id}", timeout=10)
@@ -244,7 +254,7 @@ with main_tab1:
                     st.markdown(result["blog"])
                     st.markdown('</div>', unsafe_allow_html=True)
                 with tab2:
-                    st.text_area("", value=result["blog"], height=500, label_visibility="collapsed")
+                    st.text_area("Blog content", value=result["blog"], height=500, label_visibility="collapsed")
 
                 st.markdown("---")
                 st.download_button(label="⬇️ Download Blog as .txt", data=f"COMPANY: {result['company_name']}\nKEYWORD: {result['keyword']}\nSEO TITLE: {result['seo_title']}\nMETA: {result['meta_description']}\nSLUG: {result['slug']}\n\n{'='*60}\n\n{result['blog']}", file_name=f"{result['slug'] or 'blog'}.txt", mime="text/plain", use_container_width=True)
@@ -316,30 +326,59 @@ with main_tab2:
                 with h_tab1:
                     st.markdown(blog["blog_content"])
                 with h_tab2:
-                    st.text_area("", value=blog["blog_content"], height=400, label_visibility="collapsed", key=f"raw_{blog['id']}")
-
+                    st.text_area("Blog content", value=blog["blog_content"], height=400, label_visibility="collapsed", key=f"raw_{blog['id']}")
+                
                 st.markdown("---")
 
-                # action row — status update + delete
-                action_col1, action_col2, action_col3 = st.columns([2, 2, 1])
+                # action row — status buttons + download + delete
+                action_col1, action_col2, action_col3, action_col4, action_col5 = st.columns([1.2, 1.2, 1.2, 1.5, 0.8])
 
                 with action_col1:
-                    new_status = st.selectbox(
-                        "Status",
-                        ["draft", "published", "archived"],
-                        index=["draft", "published", "archived"].index(blog["status"]),
-                        key=f"status_{blog['id']}",
-                        label_visibility="collapsed",
-                    )
-                    if new_status != blog["status"]:
-                        try:
-                            requests.patch(f"{API_URL}/blogs/{blog['id']}/status", json={"status": new_status}, timeout=5)
-                            st.success(f"Status updated to {new_status}")
-                            st.rerun()
-                        except Exception:
-                            st.error("Could not update status.")
+                    is_draft = blog["status"] == "draft"
+                    if st.button(
+                        "✏️ Draft" if not is_draft else "✏️ Draft ✓",
+                        key=f"draft_{blog['id']}",
+                        use_container_width=True,
+                        type="primary" if is_draft else "secondary",
+                    ):
+                        if not is_draft:
+                            try:
+                                requests.patch(f"{API_URL}/blogs/{blog['id']}/status", json={"status": "draft"}, timeout=5)
+                                st.rerun()
+                            except Exception:
+                                st.error("Could not update status.")
 
                 with action_col2:
+                    is_published = blog["status"] == "published"
+                    if st.button(
+                        "🌐 Published" if not is_published else "🌐 Published ✓",
+                        key=f"published_{blog['id']}",
+                        use_container_width=True,
+                        type="primary" if is_published else "secondary",
+                    ):
+                        if not is_published:
+                            try:
+                                requests.patch(f"{API_URL}/blogs/{blog['id']}/status", json={"status": "published"}, timeout=5)
+                                st.rerun()
+                            except Exception:
+                                st.error("Could not update status.")
+
+                with action_col3:
+                    is_archived = blog["status"] == "archived"
+                    if st.button(
+                        "🗄️ Archived" if not is_archived else "🗄️ Archived ✓",
+                        key=f"archived_{blog['id']}",
+                        use_container_width=True,
+                        type="primary" if is_archived else "secondary",
+                    ):
+                        if not is_archived:
+                            try:
+                                requests.patch(f"{API_URL}/blogs/{blog['id']}/status", json={"status": "archived"}, timeout=5)
+                                st.rerun()
+                            except Exception:
+                                st.error("Could not update status.")
+
+                with action_col4:
                     st.download_button(
                         label="⬇️ Download",
                         data=f"COMPANY: {blog['company_name']}\nKEYWORD: {blog['keyword']}\nSEO TITLE: {blog['seo_title']}\nMETA: {blog['meta_description']}\nSLUG: {blog['slug']}\n\n{'='*60}\n\n{blog['blog_content']}",
@@ -349,11 +388,10 @@ with main_tab2:
                         key=f"dl_{blog['id']}",
                     )
 
-                with action_col3:
-                    if st.button("🗑️ Delete", key=f"del_{blog['id']}", use_container_width=True):
+                with action_col5:
+                    if st.button("🗑️", key=f"del_{blog['id']}", use_container_width=True):
                         try:
                             requests.delete(f"{API_URL}/blogs/{blog['id']}", timeout=5)
-                            st.success("Blog deleted.")
                             st.rerun()
                         except Exception:
                             st.error("Could not delete blog.")
