@@ -16,6 +16,15 @@ INFORMATIONAL = [
     "difference between", "should i", "is it"
 ]
 
+# Keywords about these topics should never become blog content for a brand —
+# wrong audience (job seekers, not customers) and high risk of hallucinated
+# salary/employment data since brand docs never cover this.
+EXCLUDE_TOPICS = [
+    "salary", "delivery boy", "delivery partner", "delivery job",
+    "job", "career", "hiring", "vacancy", "recruitment",
+    "income", "earn money", "how much do", "pay scale",
+    "joining", "work for", "become a delivery"
+]
 
 #intent classifier
 
@@ -36,16 +45,13 @@ def classify_intent(keyword: str) -> str:
 
 # scrorer
 
-def score_keyword(kw_dict: dict, brand_terms: list[str] = None) -> dict:
-    """
-    Scores a single keyword dict.
+def score_keyword(kw_dict: dict, brand_terms: list[str] = None) -> dict | None:
+    kw = kw_dict["keyword"].lower()
 
-    Previously BRANDS was a hardcoded list of Times Prime partners.
-    Now brand_terms is passed in dynamically — the company name,
-    its competitors, and any product names they care about.
-
-    Everything else (scoring logic, long-tail bonus, recency bonus) is unchanged.
-    """
+    # exclude off-brand topics entirely — return None to signal "skip this keyword"
+    if any(topic in kw for topic in EXCLUDE_TOPICS):
+        return None
+    
     kw = kw_dict["keyword"].lower()
     intent = classify_intent(kw)
     score = 40  # base score
@@ -56,6 +62,9 @@ def score_keyword(kw_dict: dict, brand_terms: list[str] = None) -> dict:
     elif intent == "commercial":
         score += 15
 
+    # penalize pure coupon hunting keywords — low editorial value
+    if any(w in kw for w in ["coupon code", "promo code", "offers today code", "discount code"]):
+        score -= 25
     #brand relevance bonus —now dynamic instead of hardcoded
     if brand_terms:
         if any(b.lower() in kw for b in brand_terms):
@@ -86,10 +95,7 @@ def score_keyword(kw_dict: dict, brand_terms: list[str] = None) -> dict:
 
 # batch analyser
 
-def analyze_keywords(
-    raw: list[dict],
-    brand_terms: list[str] = None,
-) -> list[dict]:
+def analyze_keywords(raw: list[dict],brand_terms: list[str] = None,) -> list[dict]:
     """
     Scores and sorts all discovered keywords.
 
@@ -105,6 +111,7 @@ def analyze_keywords(
         analyze_keywords(raw, brand_terms=["acme corp", "rivalco", "partnerx"])
     """
     scored = [score_keyword(k, brand_terms=brand_terms) for k in raw]
+    scored = [s for s in scored if s is not None] #to filter out excludded keywords 
     return sorted(scored, key=lambda x: x["score"], reverse=True)
 
 
