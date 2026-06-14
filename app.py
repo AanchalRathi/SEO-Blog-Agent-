@@ -6,7 +6,7 @@ import streamlit as st
 import requests
 import os 
 import time
-API_URL = os.getenv("API_URL", "http://localhost:8000")
+API_URL = os.getenv("API_URL", "https://seo-agent-api-epz1.onrender.com")
 
 st.set_page_config(
     page_title="SEO Agent",
