@@ -21,9 +21,8 @@ import json
 import shutil
 import asyncio
 from pathlib import Path
-import concurrent.futures
 
-
+from fastapi import BackgroundTasks
 from fastapi import FastAPI, HTTPException, UploadFile, File, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
@@ -37,7 +36,6 @@ from database import (
     create_job, get_job, update_job_status, complete_job, fail_job,
 )
 
-executor = concurrent.futures.ThreadPoolExecutor(max_workers=4)
 # ── APP SETUP ─────────────────────────────────────────────────────────────────
 
 app = FastAPI(
@@ -192,16 +190,13 @@ def health():
 
 
 @app.post("/generate")
-async def generate(req: GenerateRequest, db: Session = Depends(get_db)):
+async def generate(req: GenerateRequest,background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
     # create job record in DB
     job = create_job(db, company_name=req.company_name, niche=req.niche)
     db.flush()  # ensure job row is fully committed before thread starts
     db.commit()
 
-    import time
-    time.sleep(0.5)  # small buffer for DB to settle
-
-    executor.submit(_run_pipeline, job.id, req.model_dump())
+    background_tasks.add_task(_run_pipeline, job.id, req.model_dump())
 
     return {
         "job_id":  job.id,
