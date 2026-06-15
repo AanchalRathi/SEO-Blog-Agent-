@@ -24,6 +24,10 @@ EXCLUDE_TOPICS = [
     "job", "career", "hiring", "vacancy", "recruitment",
     "income", "earn money", "how much do", "pay scale",
     "joining", "work for", "become a delivery"
+    # exclude financial topic that is not customer-facing content
+    "profit", "loss", "revenue", "share price", "shares", "stock",
+    "ipo", "valuation", "funding", "investor", "quarterly results",
+    "net worth", "market cap"
 ]
 
 #intent classifier

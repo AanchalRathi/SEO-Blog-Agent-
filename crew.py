@@ -17,7 +17,7 @@ import time
 from dotenv import load_dotenv
 
 from keyword_discovery import discover_all_keywords, discover_from_input
-from keyword_analysis import analyze_keywords, build_brand_terms
+from keyword_analysis import analyze_keywords, build_brand_terms, classify_intent
 from blog_generator import generate_blog, extract_meta
 from tools.rag_tool import setup_rag, get_brand_context
 
@@ -104,15 +104,37 @@ def run_crew(config: CompanyConfig) -> dict:
 
     # ── Step 2: Keyword Scoring ───────────────────────────────────────────────
     analyzed = analyze_keywords(raw, brand_terms=config.brand_terms)
+
     if not analyzed:
         raise ValueError(
             "No suitable keywords found after filtering. "
             "All discovered keywords were off-brand topics (jobs, salaries, etc). "
             "Try a different niche or competitors."
         )
-    best     = analyzed[0]
-    related  = [k["keyword"] for k in analyzed[1:12]]
 
+    # If user typed a specific query, prioritize it over auto-discovered keywords
+    if config.user_query:
+        query_lower = config.user_query.strip().lower()
+        exact_match = next((k for k in analyzed if k["keyword"].lower() == query_lower), None)
+
+        if exact_match:
+            best = exact_match
+            related = [k["keyword"] for k in analyzed if k["keyword"].lower() != query_lower][:11]
+            print(f"[Pipeline] User query matched discovered keyword: '{best['keyword']}'")
+        else:
+            best = {
+                "keyword": config.user_query.strip(),
+                "intent": classify_intent(query_lower),
+                "score": 70,
+                "word_count": len(config.user_query.split()),
+                "source": "user_input",
+                "seed": config.user_query,
+            }
+            related = [k["keyword"] for k in analyzed[:11]]
+            print(f"[Pipeline] User query not in discovery — using directly: '{best['keyword']}'")
+    else:
+        best = analyzed[0]
+        related = [k["keyword"] for k in analyzed[1:12]]
     print(f"[Pipeline] Best keyword: '{best['keyword']}' | score: {best['score']} | intent: {best['intent']}")
 
     # ── Step 3: Blog Type Selection ───────────────────────────────────────────
