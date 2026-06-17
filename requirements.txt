@@ -21,3 +21,4 @@ pypdf
 unstructured
 sqlalchemy 
 psycopg2-binary
+cohere
