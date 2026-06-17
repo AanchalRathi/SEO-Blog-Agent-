@@ -16,9 +16,7 @@ Why this matters:
 """
 
 import os
-os.environ["OMP_NUM_THREADS"] = "1"
-os.environ["TOKENIZERS_PARALLELISM"] = "false"
-import gc
+import cohere
 from pathlib import Path
 
 from langchain_community.document_loaders import (
@@ -27,18 +25,40 @@ from langchain_community.document_loaders import (
     UnstructuredMarkdownLoader,
 )
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.vectorstores import Chroma
+from dotenv import load_dotenv
 
+load_dotenv()
 
 # ── CONFIG ────────────────────────────────────────────────────────────────────
 
-EMBEDDING_MODEL = "sentence-transformers/paraphrase-MiniLM-L3-v2"
 CHROMA_PERSIST_DIR = "chroma_store"
-TOP_K = 2
-CHUNK_SIZE    = 800
+TOP_K = 3
+CHUNK_SIZE    = 400
 CHUNK_OVERLAP = 50
+co = cohere.Client(os.getenv("COHERE_API_KEY"))
 
+class CohereEmbeddings:
+    """
+    Wrapper to match LangChain's embedding interface using Cohere's API.
+    Replaces local HuggingFace model loading — no in-memory model,
+    so no OOM risk on memory-constrained deployments.
+    """
+    def embed_documents(self, texts: list[str]) -> list[list[float]]:
+        response = co.embed(
+            texts=texts,
+            model="embed-english-v3.0",
+            input_type="search_document",
+        )
+        return response.embeddings
+
+    def embed_query(self, text: str) -> list[float]:
+        response = co.embed(
+            texts=[text],
+            model="embed-english-v3.0",
+            input_type="search_query",
+        )
+        return response.embeddings[0]
 
 # ── LOADER ────────────────────────────────────────────────────────────────────
 
@@ -98,7 +118,7 @@ def split_documents(docs: list) -> list:
 # ── VECTOR STORE ──────────────────────────────────────────────────────────────
 
 def build_vectorstore(chunks: list, company_name: str) -> Chroma:
-    embeddings = HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL)
+    embeddings = CohereEmbeddings()
     collection_name = company_name.lower().replace(" ", "_")[:50]
 
     vectorstore = Chroma.from_documents(
@@ -109,11 +129,7 @@ def build_vectorstore(chunks: list, company_name: str) -> Chroma:
     )
     print(f"[RAG] Vectorstore built for '{company_name}' — {len(chunks)} chunks stored")
 
-    del embeddings
-    gc.collect()
-
     return vectorstore
-
 
 def load_vectorstore(company_name: str) -> Chroma | None:
     persist_path = Path(CHROMA_PERSIST_DIR)
@@ -121,7 +137,7 @@ def load_vectorstore(company_name: str) -> Chroma | None:
         return None
 
     try:
-        embeddings = HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL)
+        embeddings = CohereEmbeddings()
         collection_name = company_name.lower().replace(" ", "_")[:50]
         vectorstore = Chroma(
             collection_name=collection_name,
@@ -129,12 +145,10 @@ def load_vectorstore(company_name: str) -> Chroma | None:
             persist_directory=CHROMA_PERSIST_DIR,
         )
         print(f"[RAG] Loaded existing vectorstore for '{company_name}'")
-        gc.collect()
         return vectorstore
     except Exception as e:
         print(f"[RAG] Could not load vectorstore: {e}")
         return None
-
 
 # ── RETRIEVER ─────────────────────────────────────────────────────────────────
 
