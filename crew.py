@@ -103,8 +103,13 @@ def run_crew(config: CompanyConfig) -> dict:
         )
 
     # ── Step 2: Keyword Scoring ───────────────────────────────────────────────
-    analyzed = analyze_keywords(raw, brand_terms=config.brand_terms)
+    if not raw:
+        raise ValueError(
+        "No keywords discovered for this query. The search APIs returned no "
+        "results — try a more common search phrase or check API rate limits."
+    )
 
+    analyzed = analyze_keywords(raw, brand_terms=config.brand_terms)
     if not analyzed:
         raise ValueError(
             "No suitable keywords found after filtering. "

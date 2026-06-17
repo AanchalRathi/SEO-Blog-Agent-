@@ -16,6 +16,9 @@ Why this matters:
 """
 
 import os
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
+import gc
 from pathlib import Path
 
 from langchain_community.document_loaders import (
@@ -30,17 +33,10 @@ from langchain_community.vectorstores import Chroma
 
 # ── CONFIG ────────────────────────────────────────────────────────────────────
 
-# Local embedding model — runs on CPU, no API key, downloads once (~90MB)
-EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
-
-# Where ChromaDB stores its files between runs
+EMBEDDING_MODEL = "sentence-transformers/paraphrase-MiniLM-L3-v2"
 CHROMA_PERSIST_DIR = "chroma_store"
-
-# How many chunks to retrieve per query
-TOP_K = 3
-
-# Chunk settings — smaller = more precise retrieval
-CHUNK_SIZE    = 500
+TOP_K = 2
+CHUNK_SIZE    = 800
 CHUNK_OVERLAP = 50
 
 
@@ -102,17 +98,7 @@ def split_documents(docs: list) -> list:
 # ── VECTOR STORE ──────────────────────────────────────────────────────────────
 
 def build_vectorstore(chunks: list, company_name: str) -> Chroma:
-    """
-    Embeds chunks and stores them in ChromaDB.
-    Each company gets its own collection — so multiple companies
-    can use the same deployment without their docs mixing.
-
-    On first run  → embeds and persists to disk
-    On later runs → just loads from disk (fast)
-    """
     embeddings = HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL)
-
-    # Sanitize company name for use as collection name
     collection_name = company_name.lower().replace(" ", "_")[:50]
 
     vectorstore = Chroma.from_documents(
@@ -122,14 +108,14 @@ def build_vectorstore(chunks: list, company_name: str) -> Chroma:
         persist_directory=CHROMA_PERSIST_DIR,
     )
     print(f"[RAG] Vectorstore built for '{company_name}' — {len(chunks)} chunks stored")
+
+    del embeddings
+    gc.collect()
+
     return vectorstore
 
 
 def load_vectorstore(company_name: str) -> Chroma | None:
-    """
-    Loads an existing ChromaDB collection for a company.
-    Returns None if it doesn't exist yet.
-    """
     persist_path = Path(CHROMA_PERSIST_DIR)
     if not persist_path.exists():
         return None
@@ -143,6 +129,7 @@ def load_vectorstore(company_name: str) -> Chroma | None:
             persist_directory=CHROMA_PERSIST_DIR,
         )
         print(f"[RAG] Loaded existing vectorstore for '{company_name}'")
+        gc.collect()
         return vectorstore
     except Exception as e:
         print(f"[RAG] Could not load vectorstore: {e}")

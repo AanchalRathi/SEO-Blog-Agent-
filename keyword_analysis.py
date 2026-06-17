@@ -52,7 +52,7 @@ def classify_intent(keyword: str) -> str:
 def score_keyword(kw_dict: dict, brand_terms: list[str] = None) -> dict | None:
     kw = kw_dict["keyword"].lower()
 
-    # exclude off-brand topics entirely — return None to signal "skip this keyword"
+    # exclude off-brand topics entirely — return None to signal "skip this keyword", checked
     if any(topic in kw for topic in EXCLUDE_TOPICS):
         return None
     
@@ -66,7 +66,7 @@ def score_keyword(kw_dict: dict, brand_terms: list[str] = None) -> dict | None:
     elif intent == "commercial":
         score += 15
 
-    # penalize pure coupon hunting keywords — low editorial value
+    # penalize pure coupon hunting keywords — low editorial value, repeatedly wins otherwise
     if any(w in kw for w in ["coupon code", "promo code", "offers today code", "discount code"]):
         score -= 25
     #brand relevance bonus —now dynamic instead of hardcoded
@@ -95,8 +95,6 @@ def score_keyword(kw_dict: dict, brand_terms: list[str] = None) -> dict | None:
         "source":     kw_dict["source"],
         "seed":       kw_dict["seed"],
     }
-
-
 # batch analyser
 
 def analyze_keywords(raw: list[dict],brand_terms: list[str] = None,) -> list[dict]:

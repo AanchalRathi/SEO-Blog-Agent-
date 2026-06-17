@@ -151,10 +151,6 @@ def discover_from_input(
 
 
 def _run_discovery(seeds: list[str]) -> list[dict]:
-    """
-    Shared runner: loops through seeds, fetches from both sources,
-    deduplicates, and returns a flat list of keyword dicts.
-    """
     all_keywords = []
     seen = set()
 

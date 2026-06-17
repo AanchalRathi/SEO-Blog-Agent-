@@ -6,7 +6,7 @@ import streamlit as st
 import requests
 import os 
 import time
-API_URL = os.getenv("API_URL", "https://seo-agent-api-epz1.onrender.com")
+API_URL = os.getenv("API_URL", "http://localhost:8000")
 
 st.set_page_config(
     page_title="SEO Agent",
@@ -93,7 +93,13 @@ with st.sidebar:
     st.markdown("---")
     st.markdown("**Brand Documents**")
     st.caption("Upload PDFs, TXTs, or MDs for RAG brand context")
-    uploaded_files = st.file_uploader("docs", type=["pdf", "txt", "md"], accept_multiple_files=True, label_visibility="collapsed")
+    uploaded_files = st.file_uploader(
+        "docs",
+        type=["pdf", "txt", "md"],
+        accept_multiple_files=True,
+        label_visibility="collapsed",
+        key=f"uploader_{company_name}",
+    )
     if uploaded_files:
         for f in uploaded_files:
             st.caption(f"📄 {f.name}")
