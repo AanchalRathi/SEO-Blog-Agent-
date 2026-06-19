@@ -387,4 +387,43 @@ Pure transactional keywords (coupon codes, promo codes) always scored highest du
 
 **Neon PostgreSQL connection drops**
 Long polling sessions (3+ minutes) caused Neon's serverless Postgres to drop idle connections mid-poll, producing SSL EOF errors. Solved with `pool_recycle=280` on the SQLAlchemy engine, forcing connection refresh before Neon's timeout window.
-## Architecture
+
+---
+## 👩‍💻 Author
+
+**Aanchal Rathi**
+
+Final Year B.Tech CSE (AI & ML)
+
+- LinkedIn: (https://www.linkedin.com/in/aanchal-rathi-627174307/)
+- GitHub: https://github.com/AanchalRathi
+- Email: aanchalrathiwork@gmail.com
+
+Feel free to connect for collaborations, AI/ML discussions, internships, or feedback on the project.
+
+---
+
+## 🙏 Acknowledgements
+
+This project leverages several excellent open-source tools and platforms:
+
+- FastAPI
+- Streamlit
+- LangChain
+- ChromaDB
+- Cohere
+- Groq
+- PostgreSQL
+- Serper.dev
+
+Special thanks to the open-source community for making modern AI application development accessible.
+
+---
+
+## 📄 License
+
+This project is licensed under the MIT License.
+
+You are free to use, modify, and distribute this project for educational and personal purposes.
+
+See the LICENSE file for details.
