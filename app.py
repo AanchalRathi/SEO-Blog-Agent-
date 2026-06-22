@@ -76,7 +76,7 @@ button[kind="headerNoPadding"] { display: none !important; }
 </style>
 """, unsafe_allow_html=True)
 
-
+st.info("⚠️ This app runs on Render free tier — if it's been idle, the first load may take 30-60 seconds to wake up. Please be patient on first visit.")
 # ── SIDEBAR ───────────────────────────────────────────────────────────────────
 with st.sidebar:
     st.markdown('<div class="logo-block"><p class="logo-title">SEO Agent</p><p class="logo-sub">CrewAI · RAG · Groq</p></div>', unsafe_allow_html=True)
@@ -167,6 +167,19 @@ with main_tab1:
             if uploaded_files:
                 with st.spinner("Uploading brand documents..."):
                     upload_brand_docs(company_name, uploaded_files)
+            # Wake up the API if it's sleeping
+            with st.spinner("Connecting to API..."):
+                for attempt in range(6):  # try for up to 30 seconds
+                    try:
+                        health = requests.get(f"{API_URL}/health", timeout=10)
+                        if health.status_code == 200:
+                            break
+                    except Exception:
+                        pass
+                    time.sleep(5)
+                else:
+                    st.error("⏳ API server is not responding. It may be waking up — please try again in 30 seconds.")
+                    st.stop()
 
             with st.spinner("Running SEO agent pipeline... this takes ~30-60 seconds"):
                 # ── Step 1: Submit job, get job_id instantly ──────────────────
@@ -189,7 +202,10 @@ with main_tab1:
                     st.error("Cannot connect to the API.")
                     st.stop()
                 except Exception as e:
-                    st.error(f"Failed to start job: {e}")
+                    if "Expecting value" in str(e) or "JSONDecodeError" in str(e):
+                        st.error("⏳ The server is waking up from sleep — this takes 30-60 seconds on free tier. Please wait a moment and click Generate again.")
+                    else:
+                        st.error(f"Failed to start job: {e}")
                     st.stop()
 
                 # ── Step 2: Poll until done ───────────────────────────────────
@@ -202,9 +218,10 @@ with main_tab1:
                     time.sleep(5)
                     elapsed += 5
 
-                    if elapsed > 300:  # 5 minute hard timeout
+                    if elapsed > 520:  # 7minute hard timeout
                         progress.empty()
-                        status_box.error("⏳ Timed out after 5 minutes. The pipeline may still be running — check Blog History in a few minutes.")
+                        status_box.error("⏱️ Timed out waiting for response. The blog may still be generating — "
+                        "check Blog History in a minute. If nothing appears, try again.")
                         st.stop()
 
                     try:
