@@ -1,14 +1,15 @@
-import os
 import time
-from groq import Groq
+import os
+import google.generativeai as genai
 from dotenv import load_dotenv
 
 load_dotenv()
-client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+
+genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+model = genai.GenerativeModel("gemini-1.5-flash")
+
 
 # ── BLOG TEMPLATES ────────────────────────────────────────────────────────────
-# Each template defines a different structure for the blog body.
-# The strategy agent picks which one fits the keyword best.
 
 BLOG_STRUCTURES = {
     "listicle": """
@@ -29,7 +30,7 @@ Mention {company_name} naturally in second paragraph.
 [H2 — Why This List Matters in {region}]
 [1-2 paragraphs setting context for the list]
 
-[H2 — The {number} Best {topic}]
+[H2 — The Best {topic}]
 For each item use this format:
 ### {number}. [Item Name]
 [2-3 sentences explaining why this item is on the list]
@@ -116,7 +117,6 @@ Use numbered steps:
 
 [H2 — How {company_name} Makes This Easier]
 [2 paragraphs — connect the educational topic to {company_name}'s value]
-[Weave in related keywords naturally]
 
 [H2 — Common Mistakes to Avoid]
 [3 mistakes in short paragraphs or bullets]
@@ -152,11 +152,9 @@ Introduce {company_name} as the solution naturally.
 
 [H2 — How {company_name} Helped]
 [2-3 paragraphs — specific features or offers that solved the problem]
-[Use real product details from brand context if available]
 
 [H2 — The Results]
 [2 paragraphs — concrete outcomes, use numbers where possible]
-[Weave in related keywords naturally]
 
 [H2 — Key Takeaways]
 List 3-4 takeaways in this format:
@@ -193,7 +191,6 @@ Mention {company_name} naturally in second paragraph.
 
 [H2 — The Full Explanation]
 [2-3 paragraphs — detailed answer with context]
-[Weave in related keywords naturally]
 
 [H2 — {company_name} and {main topic}: What You Need to Know]
 [2 paragraphs — connect the answer to {company_name}'s offering]
@@ -259,7 +256,9 @@ Summarize value, clear CTA to try {company_name}.
 """,
 }
 
-#PROMPT BUILDER 
+
+# ── PROMPT BUILDER ────────────────────────────────────────────────────────────
+
 def build_prompt(
     keyword: str,
     intent: str,
@@ -276,32 +275,27 @@ def build_prompt(
     lsi = ", ".join(related[:8]) if related else ""
     year = 2026
 
-    # pick the right structure template
     structure = BLOG_STRUCTURES.get(blog_type, BLOG_STRUCTURES["standard"])
-
-    # fill in the placeholders in the structure template
     structure = structure.replace("{company_name}", company_name)
     structure = structure.replace("{region}", region)
 
-    # brand context block
     brand_context_block = ""
     if brand_context.strip():
         brand_context_block = f"""
-BRAND CONTEXT (use this to stay accurate and on-brand):
+BRAND CONTEXT (use this to stay accurate and on-brand — do not invent 
+details not present here):
 \"\"\"
 {brand_context.strip()}
 \"\"\"
 """
 
-    # content angle block
     angle_block = ""
     if angle.strip():
         angle_block = f"""
-CONTENT ANGLE (this is what makes this post better than competitors):
+CONTENT ANGLE (what makes this post better than competitors):
 {angle.strip()}
 """
 
-    # related keywords block
     lsi_block = ""
     if lsi:
         lsi_block = f"Related keywords to include naturally: {lsi}\n"
@@ -322,11 +316,14 @@ Use keywords naturally — never stuff.
 Write for a {region} audience in {year}.
 {tone.capitalize()} but authoritative tone.
 If brand context is provided, use real product details, pricing, and USPs from it.
-Never invent features or prices that aren't in the brand context."""
+Never invent features, prices, or offers not listed in the brand context.
+Return ONLY the blog content starting from SEO TITLE — no preamble, 
+no commentary, no explanation before or after."""
 
     return prompt
 
-# MAIN GENERATOR 
+
+# ── MAIN GENERATOR ────────────────────────────────────────────────────────────
 
 def generate_blog(
     keyword: str,
@@ -356,27 +353,22 @@ def generate_blog(
     )
 
     try:
-        response = client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=2000,
-            temperature=0.7,
+        response = model.generate_content(
+            prompt,
+            generation_config=genai.GenerationConfig(
+                max_output_tokens=2000,
+                temperature=0.7,
+            )
         )
-        return response.choices[0].message.content
+        return response.text
     except Exception as e:
-        print(f"[Groq] Generation failed: {e}")
+        print(f"[Gemini] Generation failed: {e}")
         raise
 
 
-# META GENERATOR 
-# NEW — extracts SEO title, meta description, slug from the blog output
-# so main.py and the API can use them separately without parsing manually
+# ── META EXTRACTOR ────────────────────────────────────────────────────────────
 
 def extract_meta(blog_output: str) -> dict:
-    """
-    Parses the structured blog output and returns meta fields as a dict.
-    Returns empty strings if a field is not found.
-    """
     import re
 
     def extract(pattern: str) -> str:
