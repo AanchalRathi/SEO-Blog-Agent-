@@ -1,12 +1,11 @@
-import time
 import os
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 from dotenv import load_dotenv
 
 load_dotenv()
 
-genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-model = genai.GenerativeModel("gemini-1.5-flash")
+client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 
 
 # ── BLOG TEMPLATES ────────────────────────────────────────────────────────────
@@ -351,11 +350,11 @@ def generate_blog(
         blog_type=blog_type,
         angle=angle,
     )
-
-    try:
-        response = model.generate_content(
-            prompt,
-            generation_config=genai.GenerationConfig(
+    try: 
+        response = client.models.generate_content(
+            model="gemini-2.0-flash",
+            contents=prompt,
+            config=types.GenerateContentConfig(
                 max_output_tokens=2000,
                 temperature=0.7,
             )
