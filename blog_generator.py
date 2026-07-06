@@ -1,11 +1,12 @@
 import os
 import time
 from google import genai
+from google.genai import types
 from dotenv import load_dotenv
 
 load_dotenv()
 
-genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 
 # ── MODEL FALLBACK LIST ───────────────────────────────────────────────────────
 # Tries models in order — if one is rate limited or exhausted, falls back to next
@@ -14,7 +15,7 @@ genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 MODELS = [
     "gemini-2.5-flash",      
     "gemini-2.5-flash-lite",  
-    "gemini-3.1-flash-lite", 
+    "gemini-2.0-flash-lite", 
 ]
 
 
@@ -351,9 +352,9 @@ def generate_blog(
     Generates a blog post using Gemini with automatic model fallback and retry.
 
     Model priority:
-        1. gemini-2.0-flash       — fastest, highest quality, separate quota
-        2. gemini-2.0-flash-lite  — lighter, separate quota pool
-        3. gemini-1.5-flash-latest — fallback, own quota pool
+        1. gemini-2.5-flash        — fastest, highest quality, separate quota
+        2. gemini-2.5-flash-lite   — lighter, separate quota pool
+        3. gemini-2.0-flash-lite   — fallback, own quota pool
 
     Per model: tries twice (with 35s wait between attempts).
     If both attempts fail with rate limit — moves to next model.
@@ -381,13 +382,13 @@ def generate_blog(
 
         for attempt in range(2):  # 2 attempts per model before moving to next
             try:
-                model = genai.GenerativeModel(model_name)
-                response = model.generate_content(
-                    prompt,
-                    generation_config=genai.GenerationConfig(
+                response = client.models.generate_content(
+                    model=model_name,
+                    contents=prompt,
+                    config=types.GenerateContentConfig(
                         max_output_tokens=2000,
                         temperature=0.7,
-                    )
+                    ),
                 )
                 print(f"[Gemini] Success with {model_name}")
                 return response.text
