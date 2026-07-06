@@ -386,16 +386,27 @@ def generate_blog(
                     "max_output_tokens": 4000,
                     "temperature": 0.7,
                 }
-                # thinking_config is only supported on 2.5-series models.
+                # thinking_config is only supported on 2.5-series models,
+                # and only on newer versions of the google-genai SDK.
                 # It's disabled here because thinking tokens otherwise eat
                 # into max_output_tokens and truncate the actual blog text.
                 if "2.5" in model_name:
                     config_kwargs["thinking_config"] = types.ThinkingConfig(thinking_budget=0)
 
+                try:
+                    config = types.GenerateContentConfig(**config_kwargs)
+                except Exception as config_err:
+                    # Installed google-genai version doesn't support thinking_config
+                    # (or this field name) — retry without it rather than failing.
+                    print(f"[Gemini] thinking_config not supported by installed SDK "
+                          f"({config_err}) — falling back without it")
+                    config_kwargs.pop("thinking_config", None)
+                    config = types.GenerateContentConfig(**config_kwargs)
+
                 response = client.models.generate_content(
                     model=model_name,
                     contents=prompt,
-                    config=types.GenerateContentConfig(**config_kwargs),
+                    config=config,
                 )
 
                 # Debug: log why generation stopped (helps catch future truncation)
