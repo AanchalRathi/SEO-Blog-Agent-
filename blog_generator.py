@@ -382,14 +382,29 @@ def generate_blog(
 
         for attempt in range(2):  # 2 attempts per model before moving to next
             try:
+                config_kwargs = {
+                    "max_output_tokens": 4000,
+                    "temperature": 0.7,
+                }
+                # thinking_config is only supported on 2.5-series models.
+                # It's disabled here because thinking tokens otherwise eat
+                # into max_output_tokens and truncate the actual blog text.
+                if "2.5" in model_name:
+                    config_kwargs["thinking_config"] = types.ThinkingConfig(thinking_budget=0)
+
                 response = client.models.generate_content(
                     model=model_name,
                     contents=prompt,
-                    config=types.GenerateContentConfig(
-                        max_output_tokens=2000,
-                        temperature=0.7,
-                    ),
+                    config=types.GenerateContentConfig(**config_kwargs),
                 )
+
+                # Debug: log why generation stopped (helps catch future truncation)
+                if response.candidates:
+                    finish_reason = response.candidates[0].finish_reason
+                    print(f"[Gemini] {model_name} finish_reason: {finish_reason}")
+                    if str(finish_reason) == "MAX_TOKENS":
+                        print(f"[Gemini] WARNING: {model_name} hit max_output_tokens — output may be truncated")
+
                 print(f"[Gemini] Success with {model_name}")
                 return response.text
 
