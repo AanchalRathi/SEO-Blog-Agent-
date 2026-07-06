@@ -1,11 +1,21 @@
 import os
-from google import genai
-from google.genai import types
+import time
+import google.generativeai as genai
 from dotenv import load_dotenv
 
 load_dotenv()
 
-client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+
+# ── MODEL FALLBACK LIST ───────────────────────────────────────────────────────
+# Tries models in order — if one is rate limited or exhausted, falls back to next
+# Each model has its own separate quota pool on Google's free tier
+
+MODELS = [
+    "gemini-2.5-flash",      
+    "gemini-2.5-flash-lite",  
+    "gemini-3.1-flash-lite", 
+]
 
 
 # ── BLOG TEMPLATES ────────────────────────────────────────────────────────────
@@ -191,7 +201,7 @@ Mention {company_name} naturally in second paragraph.
 [H2 — The Full Explanation]
 [2-3 paragraphs — detailed answer with context]
 
-[H2 — {company_name} and {main topic}: What You Need to Know]
+[H2 — {company_name} and This Topic: What You Need to Know]
 [2 paragraphs — connect the answer to {company_name}'s offering]
 
 [H2 — Related Questions People Also Ask]
@@ -281,8 +291,8 @@ def build_prompt(
     brand_context_block = ""
     if brand_context.strip():
         brand_context_block = f"""
-BRAND CONTEXT (use this to stay accurate and on-brand — do not invent 
-details not present here):
+BRAND CONTEXT (use this to stay accurate and on-brand):
+Do NOT invent any details, prices, offers, or features not present here.
 \"\"\"
 {brand_context.strip()}
 \"\"\"
@@ -316,13 +326,13 @@ Write for a {region} audience in {year}.
 {tone.capitalize()} but authoritative tone.
 If brand context is provided, use real product details, pricing, and USPs from it.
 Never invent features, prices, or offers not listed in the brand context.
-Return ONLY the blog content starting from SEO TITLE — no preamble, 
+Return ONLY the blog content starting from SEO TITLE — no preamble,
 no commentary, no explanation before or after."""
 
     return prompt
 
 
-# ── MAIN GENERATOR ────────────────────────────────────────────────────────────
+# ── MAIN GENERATOR WITH FALLBACK + RETRY ─────────────────────────────────────
 
 def generate_blog(
     keyword: str,
@@ -337,6 +347,19 @@ def generate_blog(
     blog_type: str = "standard",
     angle: str = "",
 ) -> str:
+    """
+    Generates a blog post using Gemini with automatic model fallback and retry.
+
+    Model priority:
+        1. gemini-2.0-flash       — fastest, highest quality, separate quota
+        2. gemini-2.0-flash-lite  — lighter, separate quota pool
+        3. gemini-1.5-flash-latest — fallback, own quota pool
+
+    Per model: tries twice (with 35s wait between attempts).
+    If both attempts fail with rate limit — moves to next model.
+    If all models exhausted — raises a clear error message.
+    Non-rate-limit errors (auth, bad request) raise immediately.
+    """
     prompt = build_prompt(
         keyword=keyword,
         intent=intent,
@@ -350,24 +373,65 @@ def generate_blog(
         blog_type=blog_type,
         angle=angle,
     )
-    try: 
-        response = client.models.generate_content(
-            model="gemini-2.0-flash",
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                max_output_tokens=2000,
-                temperature=0.7,
-            )
-        )
-        return response.text
-    except Exception as e:
-        print(f"[Gemini] Generation failed: {e}")
-        raise
+
+    last_error = None
+
+    for model_name in MODELS:
+        print(f"[Gemini] Trying model: {model_name}")
+
+        for attempt in range(2):  # 2 attempts per model before moving to next
+            try:
+                model = genai.GenerativeModel(model_name)
+                response = model.generate_content(
+                    prompt,
+                    generation_config=genai.GenerationConfig(
+                        max_output_tokens=2000,
+                        temperature=0.7,
+                    )
+                )
+                print(f"[Gemini] Success with {model_name}")
+                return response.text
+
+            except Exception as e:
+                error_str = str(e)
+                last_error = e
+
+                is_rate_limit = (
+                    "429" in error_str or
+                    "RESOURCE_EXHAUSTED" in error_str or
+                    "quota" in error_str.lower() or
+                    "rate" in error_str.lower()
+                )
+
+                if is_rate_limit:
+                    if attempt == 0:
+                        # first attempt failed — wait 35s and retry same model
+                        print(f"[Gemini] {model_name} rate limited — waiting 35s before retry...")
+                        time.sleep(35)
+                    else:
+                        # second attempt also failed — move to next model
+                        print(f"[Gemini] {model_name} still exhausted after retry — trying next model...")
+                        break
+                else:
+                    # non-rate-limit error — raise immediately, no point retrying
+                    print(f"[Gemini] {model_name} non-rate-limit error: {e}")
+                    raise
+
+    # all three models exhausted
+    raise Exception(
+        "All Gemini models are currently rate limited or quota exhausted. "
+        "Please wait a few minutes and try again. "
+        f"Last error: {last_error}"
+    )
 
 
 # ── META EXTRACTOR ────────────────────────────────────────────────────────────
 
 def extract_meta(blog_output: str) -> dict:
+    """
+    Parses SEO TITLE, META DESCRIPTION, and SLUG from the generated blog output.
+    Returns empty strings if a field is not found — never crashes.
+    """
     import re
 
     def extract(pattern: str) -> str:
