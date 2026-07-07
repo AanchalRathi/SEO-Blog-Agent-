@@ -114,7 +114,7 @@ Keyword Discovery           RAG Pipeline            PostgreSQL
         ▼
 
 Blog Generator
-(Groq Llama 3.3 70B)
+(Google Gemini 2.5 Flash)
 
         │
         ▼
@@ -131,7 +131,7 @@ Generated SEO Blog
 **Backend**
 - FastAPI — REST API with async background tasks
 - PostgreSQL + SQLAlchemy — blog and job persistence (Neon serverless)
-- Groq API (Llama 3.3 70B) — blog generation
+- Google Gemini 2.5 Flash — blog generation with automatic model fallback
 
 **AI / Retrieval**
 - ChromaDB — vector store for brand document retrieval
@@ -184,8 +184,12 @@ Generated SEO Blog
    - Retrieves the most semantically relevant chunks for the target keyword
 
 6. **Blog Generation** (`blog_generator.py`)
-   - Single Groq API call with structured prompt template for the selected blog type
-   - Brand context injected directly into the prompt so the LLM uses real pricing, features, and USPs instead of hallucinating
+   - Gemini API call with structured prompt template for the selected blog type
+   - Automatic model fallback across gemini-2.5-flash → gemini-2.5-flash-lite →
+     gemini-3.1-flash-lite if rate limits are hit — each model has its own 
+     separate quota pool
+   - Brand context injected directly into the prompt so the LLM uses real 
+     pricing, features, and USPs instead of hallucinating
    - Outputs SEO title, meta description, URL slug, and 900-1100 word blog post
 
 7. **Persistence** — saved to PostgreSQL, viewable and manageable in the Blog History tab
@@ -211,7 +215,7 @@ Generated SEO Blog
 
 ## Setup — Run Locally
 
-**Prerequisites:** Python 3.11, Docker (optional), Groq API key, Serper API key, Cohere API key, PostgreSQL connection string
+**Prerequisites:** Python 3.11, Docker (optional), Gemini API key, Serper API key, Cohere API key, PostgreSQL connection string
 
 ```bash
 # Clone the repo
@@ -221,7 +225,7 @@ cd seo-blog-agent
 # Set up environment variables
 cp .env.example .env
 # Fill in .env with:
-# GROQ_API_KEY=
+# GEMINI_API_KEY=
 # SERPER_API_KEY=
 # COHERE_API_KEY=
 # DATABASE_URL=
@@ -272,7 +276,7 @@ Visit `http://localhost:8501`
 
 | Variable | Required | Description |
 |---|---|---|
-| `GROQ_API_KEY` | Yes | Groq API key for Llama 3.3 70B inference |
+| `GEMINI_API_KEY` | Yes | Google Gemini API key for blog generation |
 | `SERPER_API_KEY` | Yes | Serper.dev key for Google SERP data |
 | `COHERE_API_KEY` | Yes | Cohere key for cloud-based embeddings |
 | `DATABASE_URL` | Yes | PostgreSQL connection string (Neon or local) |
@@ -339,7 +343,7 @@ This project deploys as two separate Render web services from the same GitHub re
 **API Service:**
 - Build command: `pip install -r requirements.txt`
 - Start command: `uvicorn api:app --host 0.0.0.0 --port 8000`
-- Environment variables: `GROQ_API_KEY`, `SERPER_API_KEY`, `COHERE_API_KEY`, `DATABASE_URL`
+- Environment variables: `GEMINI_API_KEY`, `SERPER_API_KEY`, `COHERE_API_KEY`, `DATABASE_URL`
 
 **UI Service:**
 - Build command: `pip install -r requirements.txt`
@@ -355,11 +359,13 @@ Both services use `runtime.txt` to pin Python 3.11.9 for dependency compatibilit
 **Current constraints:**
 - Brand documents and ChromaDB vectorstore are cleared on Render service restart due to ephemeral filesystem — re-upload required after cold starts. Persistent storage via Cloudflare R2 is the planned fix.
 - Render free tier spins down after 15 minutes of inactivity — first request after idle takes 30-50 seconds to wake up. Expected behavior on free tier.
-- Groq free tier TPM limits prevent multi-agent mode in production — CrewAI implementation is complete and preserved in `crew.py`, ready to enable on Groq Dev tier.
+- CrewAI multi-agent mode is complete and preserved in `crew.py` but disabled 
+  in production due to LLM API rate limits — ready to enable with higher tier 
+  API access.
 
 **Planned improvements:**
 - Persistent document storage via Cloudflare R2
-- CrewAI multi-agent mode on Groq Dev tier
+- CrewAI multi-agent mode on Gemini Dev tier
 - User-selectable blog type override in UI
 - Batch blog generation for content calendars
 - Blog quality scoring using LLM-as-judge pattern
@@ -375,6 +381,14 @@ Render's 30-second request timeout would kill blog generation mid-run. Solved by
 
 **Memory constraints on free tier**
 Local HuggingFace sentence-transformer models (~60-90MB on disk, 200-300MB in RAM during load) caused consistent silent OOM kills on Render's 512MB free tier. Diagnosed via instance failure events in Render's event timeline. Solved by switching to Cohere's embedding API — embeddings now happen via HTTP call with zero in-process model loading.
+
+**Gemini model deprecation and fallback strategy**
+Google deprecated the entire Gemini 2.0 and 1.5 model series on June 1, 2026,
+causing 404 errors mid-project. Solved by building a model fallback waterfall 
+(gemini-2.5-flash → gemini-2.5-flash-lite → gemini-3.1-flash-lite) where each 
+model has its own separate free tier quota pool. Rate limit hits on one model 
+automatically trigger a 35-second wait and retry, then fall through to the next 
+model — making generation resilient to both per-minute and daily quota exhaustion.
 
 **Background task execution on Render**
 Python's `threading.Thread(daemon=True)` was silently killed the moment the request returned on Render's worker process. Replaced with FastAPI's native `BackgroundTasks` which runs after the response is sent within the same async event loop — the correct approach for this pattern.
