@@ -8,7 +8,7 @@ An end-to-end AI system that discovers high-value SEO keywords from live search 
 
 - **Live App:** (https://seo-agent-ui.onrender.com)
 - **API Docs:** https://seo-agent-api-epz1.onrender.com/docs
-- **Demo Video:** [Add video link here]
+- **Demo Video:** https://youtu.be/tyd6PzbS4Gc
 
 ---
 
