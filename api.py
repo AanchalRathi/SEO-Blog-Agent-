@@ -22,12 +22,12 @@ import shutil
 import asyncio
 from pathlib import Path
 
-from fastapi import BackgroundTasks
 from fastapi import FastAPI, HTTPException, UploadFile, File, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
-
+from tasks import run_pipeline_task
+from utils import get_docs_path
 from crew import CompanyConfig, run_crew
 from database import (
     init_db, get_db, SessionLocal,
@@ -137,51 +137,6 @@ def blog_to_dict(blog) -> dict:
     }
 
 
-# ── BACKGROUND PIPELINE ───────────────────────────────────────────────────────
-
-def _run_pipeline(job_id: str, req_data: dict):
-    """
-    Runs the full CrewAI pipeline in a background thread.
-    
-    Uses its own DB session (separate from the request session)
-    because this runs outside the FastAPI request/response cycle.
-    Render never sees this as a slow request — it runs invisibly
-    in the background while /jobs/{id} polling handles the wait.
-    """
-    db = SessionLocal()
-    try:
-        # mark job as running
-        update_job_status(db, job_id, "running")
-
-        config = CompanyConfig(
-            company_name    = req_data["company_name"],
-            niche           = req_data["niche"],
-            target_audience = req_data["target_audience"],
-            competitors     = req_data["competitors"],
-            docs_path       = get_docs_path(req_data["company_name"]),
-            tone            = req_data["tone"],
-            region          = req_data["region"],
-            user_query      = req_data["user_query"],
-        )
-
-        # run the full pipeline — takes 60-90 seconds, no timeout issue
-        result = run_crew(config)
-        result["company_name"] = req_data["company_name"]
-        result["success"] = True  # add this line
-
-        # save blog to DB
-        saved = save_blog(db, result, niche=req_data["niche"])
-
-        # mark job as done with full result
-        complete_job(db, job_id, result, blog_id=saved.id)
-
-    except Exception as e:
-        fail_job(db, job_id, error=str(e))
-        print(f"[Pipeline] Job {job_id} failed: {e}")
-    finally:
-        db.close()
-
-
 # ── ENDPOINTS ─────────────────────────────────────────────────────────────────
 
 @app.get("/health")
@@ -190,13 +145,12 @@ def health():
 
 
 @app.post("/generate")
-async def generate(req: GenerateRequest,background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
-    # create job record in DB
+async def generate(req: GenerateRequest, db: Session = Depends(get_db)):
     job = create_job(db, company_name=req.company_name, niche=req.niche)
-    db.flush()  # ensure job row is fully committed before thread starts
+    db.flush()
     db.commit()
 
-    background_tasks.add_task(_run_pipeline, job.id, req.model_dump())
+    run_pipeline_task.delay(job.id, req.model_dump())
 
     return {
         "job_id":  job.id,
