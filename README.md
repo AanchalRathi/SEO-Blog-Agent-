@@ -101,35 +101,31 @@ Most SEO content tools either require manual keyword research or produce generic
 Streamlit UI (app.py)
         │
         ▼
-FastAPI Backend (api.py)
-        │
- ┌──────┼─────────────────────────────┐
- │      │                             │
- ▼      ▼                             ▼
-
-Keyword Discovery           RAG Pipeline            PostgreSQL
-(Serper + Google)      (ChromaDB + Cohere)       (Blogs + Jobs)
-
-        │
-        ▼
-
-Blog Generator
-(Google Gemini 2.5 Flash)
-
-        │
-        ▼
-
-Generated SEO Blog
+FastAPI Backend (api.py)  ──POST /generate──▶  Redis Queue (Celery broker)
+        │                                              │
+        │ returns job_id instantly                     ▼
+        │                                      Celery Worker (async)
+        ▼                                              │
+GET /jobs/{job_id}  ◀── polls job status ──── PostgreSQL (Jobs + Blogs)
+                                                        │
+                                              ┌─────────┼─────────┐
+                                              ▼                   ▼
+                                    Keyword Discovery       RAG Pipeline
+                                    (Serper + Google)   (ChromaDB + Cohere)
+                                              │                   │
+                                              └─────────┬─────────┘
+                                                         ▼
+                                                  Blog Generator
+                                              (Google Gemini 2.5 Flash)
 ```
-
-**Async job pattern** — blog generation takes 30-90 seconds. The API returns a `job_id` instantly; the UI polls `/jobs/{job_id}` until complete, avoiding request timeouts on Render's free tier.
 
 ---
 
 ## Tech Stack
 
 **Backend**
-- FastAPI — REST API with async background tasks
+- FastAPI — REST API layer
+- Celery + Redis — distributed task queue for async blog generation jobs, replacing in-process background threads
 - PostgreSQL + SQLAlchemy — blog and job persistence (Neon serverless)
 - Google Gemini 2.5 Flash — blog generation with automatic model fallback
 
@@ -204,7 +200,7 @@ Generated SEO Blog
 - ✅ 6 adaptive blog formats based on search intent
 - ✅ User query priority — typed query always respected over auto-discovery
 - ✅ Off-brand keyword filtering (prevents hallucinated employment or financial content)
-- ✅ Async job queue with real-time progress polling
+- ✅ Async job queue (Celery + Redis) with real-time progress polling — survives web server restarts
 - ✅ Blog history with status management (draft / published / archived)
 - ✅ Per-company brand doc isolation (no cross-contamination between companies)
 - ✅ Download generated blogs as .txt
@@ -215,7 +211,7 @@ Generated SEO Blog
 
 ## Setup — Run Locally
 
-**Prerequisites:** Python 3.11, Docker (optional), Gemini API key, Serper API key, Cohere API key, PostgreSQL connection string
+**Prerequisites:** Python 3.11, Docker (optional), Gemini API key, Serper API key, Cohere API key, PostgreSQL connection string, Redis connection string (Redis Cloud free tier works)
 
 ```bash
 # Clone the repo
@@ -229,6 +225,7 @@ cp .env.example .env
 # SERPER_API_KEY=
 # COHERE_API_KEY=
 # DATABASE_URL=
+# REDIS_URL=
 ```
 
 **Option 1 — Run with Docker (recommended):**
@@ -261,10 +258,13 @@ source venv/bin/activate     # Mac/Linux
 # Install dependencies
 pip install -r requirements.txt
 
-# Terminal 1 — API
+# Terminal 1 — Celery worker
+celery -A celery_app worker --loglevel=info
+
+# Terminal 2 — API
 uvicorn api:app --reload --port 8000
 
-# Terminal 2 — UI
+# Terminal 3 — UI
 streamlit run app.py
 ```
 
@@ -280,8 +280,8 @@ Visit `http://localhost:8501`
 | `SERPER_API_KEY` | Yes | Serper.dev key for Google SERP data |
 | `COHERE_API_KEY` | Yes | Cohere key for cloud-based embeddings |
 | `DATABASE_URL` | Yes | PostgreSQL connection string (Neon or local) |
+| `REDIS_URL` | Yes | Redis connection string used as the Celery broker and result backend |
 | `API_URL` | UI only | FastAPI service URL (defaults to localhost:8000) |
-
 ---
 
 ## API Reference
@@ -315,7 +315,11 @@ seo-blog-agent/
 ├── keyword_discovery.py
 ├── keyword_analysis.py
 ├── blog_generator.py
+├── celery_app.py
+├── tasks.py
+├── utils.py
 ├── main.py
+├── start.sh
 │
 ├── tools/
 │   └── rag_tool.py
@@ -335,15 +339,18 @@ seo-blog-agent/
 ```
 
 ---
-
-## Deployment on Render
-
 This project deploys as two separate Render web services from the same GitHub repo:
 
 **API Service:**
-- Build command: `pip install -r requirements.txt`
-- Start command: `uvicorn api:app --host 0.0.0.0 --port 8000`
-- Environment variables: `GEMINI_API_KEY`, `SERPER_API_KEY`, `COHERE_API_KEY`, `DATABASE_URL`
+- Runs both the FastAPI server and the Celery worker inside a single container via `start.sh`, since Render's free tier doesn't offer a separate Background Worker service type
+- Start command (via Dockerfile `CMD ["./start.sh"]`):
+```bash
+  #!/bin/sh
+  celery -A celery_app worker --loglevel=info --concurrency=2 --without-mingle --without-gossip --without-heartbeat &
+  uvicorn api:app --host 0.0.0.0 --port 8000
+```
+- Environment variables: `GEMINI_API_KEY`, `SERPER_API_KEY`, `COHERE_API_KEY`, `DATABASE_URL`, `REDIS_URL`
+- Redis is hosted separately on Redis Cloud's free tier (30MB, used purely as a lightweight job queue — task payloads are small JSON metadata, not blog content)
 
 **UI Service:**
 - Build command: `pip install -r requirements.txt`
@@ -352,6 +359,7 @@ This project deploys as two separate Render web services from the same GitHub re
 
 Both services use `runtime.txt` to pin Python 3.11.9 for dependency compatibility.
 
+> **Note on architecture:** in a paid/production deployment, the Celery worker would run as its own independent service (decoupled from the web server) so a crash or memory spike in one doesn't affect the other. Running them in the same container here is a free-tier constraint, not the intended production topology — the code itself is already fully decoupled (`tasks.py` has zero dependency on the FastAPI process).
 ---
 
 ## Known Limitations & Future Improvements
@@ -362,6 +370,7 @@ Both services use `runtime.txt` to pin Python 3.11.9 for dependency compatibilit
 - CrewAI multi-agent mode is complete and preserved in `crew.py` but disabled 
   in production due to LLM API rate limits — ready to enable with higher tier 
   API access.
+- Celery worker runs inside the same container as the FastAPI server on Render's free tier (no separate Background Worker service available on free plans). Fully decoupled architecture is in place; splitting into two services is a one-line deployment change on a paid plan.
 
 **Planned improvements:**
 - Persistent document storage via Cloudflare R2
@@ -390,8 +399,10 @@ model has its own separate free tier quota pool. Rate limit hits on one model
 automatically trigger a 35-second wait and retry, then fall through to the next 
 model — making generation resilient to both per-minute and daily quota exhaustion.
 
-**Background task execution on Render**
-Python's `threading.Thread(daemon=True)` was silently killed the moment the request returned on Render's worker process. Replaced with FastAPI's native `BackgroundTasks` which runs after the response is sent within the same async event loop — the correct approach for this pattern.
+**From silent thread death to a real task queue: BackgroundTasks → Celery + Redis**
+The pipeline originally used Python's `threading.Thread(daemon=True)`, which was silently killed the moment the request returned on Render's worker process — jobs would vanish mid-run with no error. This was fixed short-term with FastAPI's native `BackgroundTasks`, but that still tied job execution to the same process as the web server: a redeploy or restart could still kill an in-flight job, and there was no retry mechanism if a job failed.
+
+Migrated to Celery with Redis as the message broker: `/generate` now pushes a task onto a Redis queue and returns instantly, while a fully separate Celery worker process picks it up and runs the pipeline. This decouples job execution from the web server's lifecycle entirely — a FastAPI restart no longer risks an in-flight job, and Celery's built-in retry semantics mean a transient failure (like a Gemini `503` during high demand) can be handled at the task level rather than crashing the whole job. Job status tracking in PostgreSQL was already fully decoupled from the trigger mechanism, so `/jobs/{job_id}` needed zero changes — only how the job gets triggered changed, not how its state is tracked.
 
 **Brand doc cross-contamination**
 Streamlit's file uploader persists uploaded files in widget state across reruns within the same session. Switching companies without clearing the uploader caused multiple companies' brand docs to merge into the same ChromaDB collection. Solved by scoping the uploader widget key to the company name (`key=f"uploader_{company_name}"`), which resets the widget whenever the company changes.
