@@ -118,7 +118,18 @@ GET /jobs/{job_id}  ◀── polls job status ──── PostgreSQL (Jobs + B
                                                   Blog Generator
                                               (Google Gemini 2.5 Flash)
 ```
-
+```mermaid
+flowchart TD
+    A[Streamlit UI] -->|POST /generate| B[FastAPI Backend]
+    B -->|job queued instantly| C[(Redis Queue)]
+    B -->|returns job_id| A
+    C --> D[Celery Worker]
+    D --> E[Keyword Discovery<br/>Serper + Google Autocomplete]
+    E --> F[RAG Brand Context<br/>ChromaDB + Cohere]
+    F --> G[Blog Generator<br/>Gemini 2.5 Flash fallback waterfall]
+    G --> H[(PostgreSQL<br/>Blogs + Jobs)]
+    A -->|GET /jobs/id polling| H
+```
 ---
 
 ## Tech Stack
@@ -151,6 +162,29 @@ GET /jobs/{job_id}  ◀── polls job status ──── PostgreSQL (Jobs + B
 ---
 
 ## Pipeline Walkthrough
+
+```mermaid
+sequenceDiagram
+    participant UI as Streamlit UI
+    participant API as FastAPI
+    participant Redis as Redis Queue
+    participant Worker as Celery Worker
+    participant DB as PostgreSQL
+
+    UI->>API: POST /generate
+    API->>DB: create_job (status: pending)
+    API->>Redis: run_pipeline_task.delay(job_id)
+    API-->>UI: 200 OK { job_id }
+    Redis->>Worker: task received
+    Worker->>DB: update_job_status (running)
+    Worker->>Worker: keyword discovery → RAG → Gemini
+    Worker->>DB: complete_job (status: done)
+    loop every 5s
+        UI->>API: GET /jobs/{job_id}
+        API->>DB: get_job
+        API-->>UI: status + result when done
+    end
+```
 
 1. **User input** — company name, niche, target audience, competitors, tone, region, and optional brand documents uploaded via the Streamlit sidebar
 
