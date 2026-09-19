@@ -6,11 +6,7 @@ from utils import get_docs_path
 
 @celery_app.task(name="run_pipeline_task", bind=True, max_retries=2)
 def run_pipeline_task(self, job_id: str, req_data: dict):
-    """
-    Celery version of the old _run_pipeline background function.
-    Same DB session pattern, same job lifecycle calls — only the
-    trigger mechanism changed (Celery worker instead of a background thread).
-    """
+    
     db = SessionLocal()
     try:
         update_job_status(db, job_id, "running")
