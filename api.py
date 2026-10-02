@@ -1,21 +1,3 @@
-"""
-api.py — FastAPI backend with async job pattern
-
-Endpoints:
-    POST /generate           → starts pipeline in background, returns job_id instantly
-    GET  /jobs/{job_id}      → poll this to check job status and get result
-    POST /upload-docs        → uploads brand docs
-    GET  /health             → health check
-    GET  /blogs              → get all blogs
-    PATCH /blogs/{id}/status → update blog status
-    DELETE /blogs/{id}       → delete a blog
-
-The async pattern:
-    POST /generate → {"job_id": "abc-123", "status": "pending"}  ← instant
-    GET  /jobs/abc-123 → {"status": "running"}                   ← after 1s
-    GET  /jobs/abc-123 → {"status": "done", "result": {...}}     ← after ~60-90s
-"""
-
 import os
 import json
 import shutil
@@ -36,7 +18,7 @@ from database import (
     create_job, get_job, update_job_status, complete_job, fail_job,
 )
 
-# ── APP SETUP ─────────────────────────────────────────────────────────────────
+# APP SETUP 
 
 app = FastAPI(
     title="SEO Agent API",
@@ -55,11 +37,10 @@ app.add_middleware(
 def startup():
     init_db()
 
-
-# ── REQUEST / RESPONSE MODELS ─────────────────────────────────────────────────
+# REQUEST / RESPONSE MODELS 
 
 class GenerateRequest(BaseModel):
-    company_name:    str       = Field(..., example="Acme Corp")
+    company_name:    str       = Field(..., example="XYZ")
     niche:           str       = Field(..., example="food delivery")
     target_audience: str       = Field(..., example="urban Indians who order food online")
     competitors:     list[str] = Field([], example=["RivalCo", "CompetitorX"])
@@ -70,7 +51,7 @@ class GenerateRequest(BaseModel):
     class Config:
         json_schema_extra = {
             "example": {
-                "company_name":    "Acme Corp",
+                "company_name":    "XYZ",
                 "niche":           "food delivery",
                 "target_audience": "urban Indians who order food online",
                 "competitors":     ["RivalCo", "CompetitorX"],
@@ -112,7 +93,7 @@ class StatusUpdate(BaseModel):
     status: str = Field(..., example="published")
 
 
-# ── HELPERS ───────────────────────────────────────────────────────────────────
+#  HELPERS 
 
 def get_docs_path(company_name: str) -> str:
     safe_name = company_name.lower().replace(" ", "_")[:40]
@@ -137,7 +118,7 @@ def blog_to_dict(blog) -> dict:
     }
 
 
-# ── ENDPOINTS ─────────────────────────────────────────────────────────────────
+# ENDPOINTS 
 
 @app.get("/health")
 def health():
@@ -182,7 +163,6 @@ def get_job_status(job_id: str, db: Session = Depends(get_db)):
         "created_at": job.created_at.strftime("%Y-%m-%d %H:%M:%S"),
     }
 
-    # only attach full result when done — keeps polling responses small
     if job.status == "done" and job.result_json:
         response["result"] = json.loads(job.result_json)
 
